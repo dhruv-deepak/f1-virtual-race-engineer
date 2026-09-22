@@ -140,10 +140,10 @@ python -m src.models.train --model bilstm
 | 0 | Repository scaffolding and configuration | ✅ |
 | 1 | FastF1 data acquisition (2021–2024) | ✅ |
 | 2 | Feature engineering and sequence dataset | ✅ |
-| 3 | **Model 1: Bi-LSTM** — training, curves, confusion matrix (*Review 2*) | ✅ |
+| 3 | **Model 1: Bi-LSTM** — training, curves, confusion matrix | ✅ |
 | 4 | Model 2: CNN–BiLSTM | ⬜ |
 | 5 | Model 3: Multi-task Transformer with cross-driver attention | ⬜ |
-| 6 | Three-model comparison + historical race replay (*Review 3*) | ⬜ |
+| 6 | Three-model comparison + historical race replay | ⬜ |
 | 7 | Final report and presentation | ⬜ |
 
 ---
