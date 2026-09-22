@@ -1,0 +1,43 @@
+# ---- FastF1 cache (grows to several GB - never commit) ----
+cache/
+*.ff1pkl
+
+# ---- Data (regenerate via src/data/download.py) ----
+data/raw/
+data/interim/
+data/processed/
+*.parquet
+*.csv
+!reports/metrics/*.csv
+
+# ---- Trained model weights ----
+models/*.keras
+models/*.h5
+models/*.pt
+models/*.pth
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.Python
+build/
+dist/
+
+# ---- Jupyter ----
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# ---- IDE / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Logs ----
+logs/
+*.log

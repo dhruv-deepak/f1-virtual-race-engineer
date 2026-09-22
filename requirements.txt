@@ -1,0 +1,26 @@
+# --- Data acquisition ---
+fastf1>=3.8.3
+
+# --- Core data handling ---
+numpy>=2.0
+pandas>=2.2
+pyarrow>=16.0          # parquet engine
+
+# --- Deep learning ---
+tensorflow>=2.20
+keras>=3.12
+
+# --- Classical ML / metrics / preprocessing ---
+scikit-learn>=1.7
+
+# --- Visualisation ---
+matplotlib>=3.9
+seaborn>=0.13
+
+# --- Notebook ---
+jupyterlab>=4.4
+ipykernel>=6.29
+
+# --- Utilities ---
+tqdm>=4.66
+pyyaml>=6.0
