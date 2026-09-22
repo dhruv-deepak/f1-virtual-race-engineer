@@ -55,6 +55,10 @@ RESULT_COLS = ["DriverNumber", "GridPosition", "Position", "Points", "Status", "
 WEATHER_COLS = ["Time", "AirTemp", "TrackTemp", "Humidity", "Pressure",
                 "WindSpeed", "WindDirection", "Rainfall"]
 
+# Transient API failures are common on long sweeps; retry before giving up.
+RETRIES = 3
+RETRY_BACKOFF_S = 5
+
 # Columns dropped at the raw stage: redundant with what we keep, or unusable.
 DROP_COLS = ["LapStartDate", "Sector1SessionTime", "Sector2SessionTime",
              "Sector3SessionTime", "DeletedReason"]
@@ -188,22 +192,38 @@ def download_season(year: int, force: bool = False, limit: int | None = None) ->
         out_path = config.DATA_RAW / f"{year}_{rnd:02d}_{_slug(name)}.parquet"
 
         if out_path.exists() and not force:
-            print(f"  [skip] {year} R{rnd:02d} {name}")
+            print(f"  [skip] {year} R{rnd:02d} {name}", flush=True)
             continue
 
         t0 = time.time()
-        try:
-            session = fastf1.get_session(year, rnd, config.SESSION_TYPE)
-            session.load(laps=True, telemetry=True, weather=True, messages=False)
-            df = build_race_table(session, year, rnd, event)
-            df.to_parquet(out_path, index=False)
-            print(f"  [ok]   {year} R{rnd:02d} {name:<30.30} "
-                  f"{len(df):>5} laps  {df['Driver'].nunique():>2} drivers  "
-                  f"{time.time() - t0:>5.1f}s")
-        except Exception as exc:
-            # A cancelled or unavailable session must not abort the whole sweep.
-            msg = f"{year} R{rnd:02d} {name}: {type(exc).__name__}: {exc}"
-            print(f"  [FAIL] {msg}")
+        last_exc = None
+        # The F1 live-timing API rate-limits bursts, and a request that fails
+        # this second usually succeeds a few seconds later. Without retries a
+        # single sweep silently loses whole blocks of races.
+        for attempt in range(1, RETRIES + 1):
+            try:
+                session = fastf1.get_session(year, rnd, config.SESSION_TYPE)
+                session.load(laps=True, telemetry=True, weather=True, messages=False)
+                df = build_race_table(session, year, rnd, event)
+                df.to_parquet(out_path, index=False)
+                print(f"  [ok]   {year} R{rnd:02d} {name:<30.30} "
+                      f"{len(df):>5} laps  {df['Driver'].nunique():>2} drivers  "
+                      f"{time.time() - t0:>5.1f}s", flush=True)
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt < RETRIES:
+                    wait = RETRY_BACKOFF_S * attempt
+                    print(f"  [retry] {year} R{rnd:02d} {name} "
+                          f"({type(exc).__name__}) -- attempt {attempt}/{RETRIES}, "
+                          f"waiting {wait}s", flush=True)
+                    time.sleep(wait)
+
+        if last_exc is not None:
+            # A genuinely cancelled or unavailable session must not abort the sweep.
+            msg = f"{year} R{rnd:02d} {name}: {type(last_exc).__name__}: {last_exc}"
+            print(f"  [FAIL] {msg}", flush=True)
             failures.append(msg)
 
     return failures
