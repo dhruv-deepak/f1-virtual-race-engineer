@@ -34,6 +34,7 @@ import warnings
 
 import fastf1
 import pandas as pd
+from fastf1.req import RateLimitExceededError
 
 from src import config
 
@@ -58,6 +59,15 @@ WEATHER_COLS = ["Time", "AirTemp", "TrackTemp", "Humidity", "Pressure",
 # Transient API failures are common on long sweeps; retry before giving up.
 RETRIES = 3
 RETRY_BACKOFF_S = 5
+
+# The F1 API allows 500 calls per hour and one race costs roughly nine of them,
+# so a full 2021-2024 sweep cannot complete inside a single window. When the
+# limit is hit the only cure is to wait for the rolling window to free up, so we
+# sleep and resume rather than burning the remaining races as failures.
+RATE_LIMIT_SLEEP_S = 15 * 60
+RATE_LIMIT_MAX_WAITS = 12          # up to three hours of waiting in total
+# Pace successful downloads to stay under the limit on long unattended runs.
+PACE_DELAY_S = 4
 
 # Columns dropped at the raw stage: redundant with what we keep, or unusable.
 DROP_COLS = ["LapStartDate", "Sector1SessionTime", "Sector2SessionTime",
@@ -197,10 +207,13 @@ def download_season(year: int, force: bool = False, limit: int | None = None) ->
 
         t0 = time.time()
         last_exc = None
-        # The F1 live-timing API rate-limits bursts, and a request that fails
-        # this second usually succeeds a few seconds later. Without retries a
-        # single sweep silently loses whole blocks of races.
-        for attempt in range(1, RETRIES + 1):
+        rate_limit_waits = 0
+        attempt = 0
+        # Two distinct failure modes are handled here. A transient API error
+        # usually succeeds a few seconds later, so it gets a short backoff. A
+        # rate-limit error cannot be retried away -- it needs the hourly window
+        # to roll forward -- so it sleeps long and does not consume an attempt.
+        while attempt < RETRIES:
             try:
                 session = fastf1.get_session(year, rnd, config.SESSION_TYPE)
                 session.load(laps=True, telemetry=True, weather=True, messages=False)
@@ -210,9 +223,20 @@ def download_season(year: int, force: bool = False, limit: int | None = None) ->
                       f"{len(df):>5} laps  {df['Driver'].nunique():>2} drivers  "
                       f"{time.time() - t0:>5.1f}s", flush=True)
                 last_exc = None
+                time.sleep(PACE_DELAY_S)
                 break
+            except RateLimitExceededError as exc:
+                last_exc = exc
+                rate_limit_waits += 1
+                if rate_limit_waits > RATE_LIMIT_MAX_WAITS:
+                    break
+                print(f"  [rate-limit] {year} R{rnd:02d} {name} -- sleeping "
+                      f"{RATE_LIMIT_SLEEP_S // 60} min for the API window to reset "
+                      f"({rate_limit_waits}/{RATE_LIMIT_MAX_WAITS})", flush=True)
+                time.sleep(RATE_LIMIT_SLEEP_S)
             except Exception as exc:
                 last_exc = exc
+                attempt += 1
                 if attempt < RETRIES:
                     wait = RETRY_BACKOFF_S * attempt
                     print(f"  [retry] {year} R{rnd:02d} {name} "
