@@ -33,6 +33,7 @@ import time
 import warnings
 
 import fastf1
+import numpy as np
 import pandas as pd
 from fastf1.req import RateLimitExceededError
 
@@ -102,10 +103,29 @@ def aggregate_telemetry(session) -> pd.DataFrame:
         if len(edges) < 2:
             continue
 
+        # Timing glitches occasionally give two laps the same start time, which
+        # pd.cut rejects. Passing duplicates="drop" would silently shrink the bin
+        # count while the label list stayed the same length, misaligning every
+        # lap after the glitch -- so instead drop the offending edge *and* the
+        # lap label that belongs to it, keeping the two in step.
+        edge_values = edges.to_numpy()
+        lap_labels = drv_laps["LapNumber"].to_numpy()[: len(edge_values) - 1]
+        keep = np.ones(len(edge_values), dtype=bool)
+        last = edge_values[0]
+        for i in range(1, len(edge_values)):
+            if edge_values[i] <= last:
+                keep[i] = False
+            else:
+                last = edge_values[i]
+        edge_values = edge_values[keep]
+        lap_labels = lap_labels[keep[1:]]
+        if len(edge_values) < 2:
+            continue
+
         lap_index = pd.cut(
             tel["Time"],
-            bins=edges,
-            labels=drv_laps["LapNumber"].iloc[: len(edges) - 1],
+            bins=edge_values,
+            labels=lap_labels,
             right=False,
             ordered=False,
         )

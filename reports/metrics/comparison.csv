@@ -1,0 +1,2 @@
+model,params,train_time_s,epochs_run,inference_ms_per_sample,accuracy,balanced_accuracy,precision,recall,f1,roc_auc,pr_auc
+Model 1 — Bi-LSTM,104769,51.18,11,0.0612,0.840066582688501,0.6894619879688193,0.2683403068340307,0.5079197465681098,0.3511589706150757,0.7986081488767987,0.32180019590450554

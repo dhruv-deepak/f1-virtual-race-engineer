@@ -17,8 +17,7 @@ Registry
 from __future__ import annotations
 
 import keras
-import tensorflow as tf
-from keras import layers
+from keras import layers, ops
 
 from src import config
 
@@ -31,9 +30,9 @@ class WeightedBCE(keras.losses.Loss):
     """
     Binary cross-entropy with the positive class up-weighted.
 
-    Only ~13% of laps are followed by a pit stop. Plain cross-entropy lets the
-    model collapse onto "never pit" and still score ~87% accuracy, so the
-    positive class is scaled by ``pos_weight``.
+    Only ~8.9% of laps are followed by a pit stop within the horizon. Plain
+    cross-entropy lets the model collapse onto "never pit" and still score
+    ~91% accuracy, so the positive class is scaled by ``pos_weight``.
 
     This is applied as a *loss function* rather than via Keras' ``class_weight``
     argument on purpose: ``class_weight`` is not applied to the validation set,
@@ -47,11 +46,20 @@ class WeightedBCE(keras.losses.Loss):
         self.pos_weight = float(pos_weight)
 
     def call(self, y_true, y_pred):
-        y_true = tf.cast(y_true, y_pred.dtype)
-        y_pred = tf.clip_by_value(y_pred, 1e-7, 1.0 - 1e-7)
-        bce = -(y_true * tf.math.log(y_pred) + (1.0 - y_true) * tf.math.log(1.0 - y_pred))
+        # Both tensors MUST be flattened to rank 1 first. Keras hands `y_true`
+        # in as shape (batch,) but leaves `y_pred` as (batch, 1), and combining
+        # those two directly broadcasts to a (batch, batch) outer product
+        # instead of a (batch,) vector. It raises no error -- the model simply
+        # optimises nonsense and collapses to a constant 0.5 prediction.
+        y_pred = ops.reshape(y_pred, [-1])
+        y_true = ops.reshape(ops.cast(y_true, y_pred.dtype), [-1])
+
+        # Keras' built-in binary_crossentropy is numerically stable; a
+        # hand-rolled -y*log(p) needs clipping that silently kills gradients.
+        bce = ops.binary_crossentropy(y_true, y_pred)
         weights = y_true * self.pos_weight + (1.0 - y_true)
-        return tf.reduce_mean(weights * bce)
+        # Return per-sample losses and let the base class handle reduction.
+        return weights * bce
 
     def get_config(self):
         return {**super().get_config(), "pos_weight": self.pos_weight}
@@ -61,7 +69,7 @@ def standard_metrics() -> list:
     """
     The metric set every model reports.
 
-    Accuracy alone is misleading under 13% positives, so precision, recall and
+    Accuracy alone is misleading under 9% positives, so precision, recall and
     both AUCs are tracked from the first epoch. PR-AUC is the headline number:
     it is the one that actually degrades when a model stops predicting pit stops.
     """

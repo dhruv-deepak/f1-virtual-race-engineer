@@ -29,8 +29,9 @@ scores and confusion matrices are directly comparable:
 A driver pits only 2–3 times in a ~55-lap race, so "pits on this exact lap" is
 roughly **5% positive**. A model that always predicts *no pit* would score 95%
 accuracy while being completely useless. Widening the target to a 3-lap window
-raises the positive rate to a trainable ~12–15%. We additionally train with
-class weights and report **precision, recall, F1 and PR-AUC** alongside raw
+raises the positive rate to **8.9%** (measured across all 90 races), which is
+trainable but still heavily imbalanced. We therefore also up-weight the positive
+class in the loss and report **precision, recall, F1 and PR-AUC** alongside raw
 accuracy, because accuracy alone hides this failure mode.
 
 ## The three models
@@ -60,22 +61,27 @@ competitor behaviour directly influences each prediction.
 | Source | FastF1 API (official F1 timing + telemetry + Ergast archive) |
 | Seasons | 2021 – 2024 |
 | Sessions | Race sessions |
-| Scale | ~90 races × ~20 drivers × ~55 laps ≈ 100,000 driver-lap rows |
+| Scale | 90 races, 98,357 driver-lap rows, 81,270 sequence windows |
 
 Raw car telemetry is sampled at ~3.7 Hz, which would be tens of gigabytes across
 all sessions. It is therefore **aggregated per lap at download time** (mean/max
 speed, throttle-on %, brake %, average gear and RPM) rather than stored raw.
+
+The FastF1 API allows **500 calls per hour** and one race costs roughly nine of
+them, so a full sweep cannot finish inside a single window. `download.py` sleeps
+through the rate limit and resumes, and skips races already on disk, so it can be
+re-run freely.
 
 ### Splits
 
 Split by **season**, never by random row — two laps from the same race are
 highly correlated, so a random split leaks the test set into training.
 
-| Split | Seasons |
-|---|---|
-| Train | 2021, 2022 |
-| Validation | 2023 |
-| Test | 2024 |
+| Split | Seasons | Races | Windows | Positives |
+|---|---|---|---|---|
+| Train | 2021, 2022 | 43 | 38,890 | 9.15% |
+| Validation | 2023 | 22 | 20,152 | 9.55% |
+| Test | 2024 | 24 | 22,228 | 8.52% |
 
 ---
 
