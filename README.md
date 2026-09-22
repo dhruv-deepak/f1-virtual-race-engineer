@@ -138,13 +138,54 @@ python -m src.models.train --model bilstm
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 | Repository scaffolding and configuration | ✅ |
-| 1 | FastF1 data acquisition (2021–2024) | ⬜ |
-| 2 | Feature engineering and sequence dataset | ⬜ |
-| 3 | **Model 1: Bi-LSTM** — training, curves, confusion matrix (*Review 2*) | ⬜ |
+| 1 | FastF1 data acquisition (2021–2024) | ✅ |
+| 2 | Feature engineering and sequence dataset | ✅ |
+| 3 | **Model 1: Bi-LSTM** — training, curves, confusion matrix (*Review 2*) | ✅ |
 | 4 | Model 2: CNN–BiLSTM | ⬜ |
 | 5 | Model 3: Multi-task Transformer with cross-driver attention | ⬜ |
 | 6 | Three-model comparison + historical race replay (*Review 3*) | ⬜ |
 | 7 | Final report and presentation | ⬜ |
+
+---
+
+## Results so far — Model 1 (Bi-LSTM)
+
+Test set: the full 2024 season, 22,228 windows, 8.52% positive.
+
+| Model | Accuracy | Balanced acc. | Precision | Recall | F1 | ROC-AUC | PR-AUC |
+|---|---|---|---|---|---|---|---|
+| Never-pit baseline | 0.9148 | 0.5000 | 0.000 | 0.000 | 0.000 | 0.500 | 0.085 |
+| Logistic regression (final lap) | — | — | — | — | — | 0.802 | 0.308 |
+| Gradient boosting (flat window) | — | — | — | — | — | **0.853** | **0.391** |
+| **Bi-LSTM @ 0.50** | 0.7285 | **0.7271** | 0.199 | **0.725** | 0.313 | 0.806 | 0.323 |
+| **Bi-LSTM @ tuned (0.779)** | 0.8642 | 0.6713 | 0.298 | 0.439 | **0.355** | 0.806 | 0.323 |
+
+Note the never-pit baseline: it wins on raw accuracy and scores zero on every
+metric that matters. That is exactly why accuracy is not the headline number here.
+
+### Honest reading of this result
+
+Gradient boosting on the flattened window currently **outperforms** the Bi-LSTM,
+and logistic regression on the final lap alone roughly matches it. The sequence
+model is not yet earning its complexity on this task. Two reasons, both worth
+stating:
+
+* **Effective sample size.** 38,890 training windows come from only 815
+  driver-races across 43 races, and consecutive windows share 9 of their 10 laps.
+  The nominal sample count badly overstates how much independent data there is.
+* **Capacity is not the bottleneck.** A sweep over six architectures from 104k
+  down to 10k parameters, varying dropout, L2 and recurrent dropout, moved
+  validation PR-AUC only between 0.288 and 0.320. The model overfits within one
+  to three epochs regardless.
+
+This sets a real bar for Models 2 and 3: the multi-task model with cross-driver
+attention has to beat 0.391 PR-AUC, not just the trivial baseline.
+
+A further note on thresholds: F1-optimal tuning pushes the threshold to 0.779,
+trading recall (0.725 → 0.439) for precision. For an actual race engineer that
+is likely the wrong trade — a missed stop is expensive while a false alarm costs
+nothing — so the 0.50 operating point, with 72.5% of stops caught, is arguably
+the more useful one. Both are reported rather than silently choosing.
 
 ---
 

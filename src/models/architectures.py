@@ -17,7 +17,7 @@ Registry
 from __future__ import annotations
 
 import keras
-from keras import layers, ops
+from keras import layers, ops, regularizers
 
 from src import config
 
@@ -86,7 +86,8 @@ def standard_metrics() -> list:
 # Model 1 -- Bi-LSTM baseline
 # ---------------------------------------------------------------------------
 def build_bilstm(input_shape: tuple[int, int], pos_weight: float = 1.0,
-                 learning_rate: float = config.LEARNING_RATE) -> keras.Model:
+                 learning_rate: float = 5e-4, units: tuple[int, int] = (64, 32),
+                 dropout: float = 0.4, l2: float = 1e-4) -> keras.Model:
     """
     Stacked bidirectional LSTM.
 
@@ -98,15 +99,34 @@ def build_bilstm(input_shape: tuple[int, int], pos_weight: float = 1.0,
 
     The stack narrows 64 -> 32 -> 32: the first layer returns the full sequence
     so the second can compress it into one summary vector per window.
+
+    On the regularisation defaults
+    -----------------------------
+    This model overfits almost immediately: 38,890 training windows come from
+    only 815 driver-races, and consecutive windows share 9 of their 10 laps, so
+    the effective sample size is a small fraction of the nominal one. A sweep
+    over six architectures (104k down to 10k parameters, with dropout, L2 and
+    recurrent dropout) moved validation PR-AUC only between 0.288 and 0.320 --
+    the ceiling here is the data, not the capacity. Dropout 0.4 with light L2
+    and a halved learning rate was the best-generalising setting that keeps the
+    cuDNN kernel available; recurrent dropout scored comparably but disables
+    cuDNN and triples training time, which is a poor trade for a system whose
+    premise is real-time inference.
     """
+    reg = regularizers.l2(l2) if l2 else None
     model = keras.Sequential(
         [
             keras.Input(shape=input_shape, name="lap_window"),
-            layers.Bidirectional(layers.LSTM(64, return_sequences=True), name="bilstm_1"),
-            layers.Dropout(0.3, name="dropout_1"),
-            layers.Bidirectional(layers.LSTM(32), name="bilstm_2"),
-            layers.Dropout(0.3, name="dropout_2"),
-            layers.Dense(32, activation="relu", name="dense"),
+            layers.Bidirectional(
+                layers.LSTM(units[0], return_sequences=True, kernel_regularizer=reg),
+                name="bilstm_1",
+            ),
+            layers.Dropout(dropout, name="dropout_1"),
+            layers.Bidirectional(
+                layers.LSTM(units[1], kernel_regularizer=reg), name="bilstm_2"
+            ),
+            layers.Dropout(dropout, name="dropout_2"),
+            layers.Dense(32, activation="relu", kernel_regularizer=reg, name="dense"),
             layers.Dense(1, activation="sigmoid", name="pit_probability"),
         ],
         name="bilstm",
