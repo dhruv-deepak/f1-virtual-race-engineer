@@ -118,6 +118,43 @@ def test_a_head_is_not_supervised_where_its_own_mask_is_zero(model):
         )
 
 
+def test_attention_actually_couples_drivers_and_the_ablation_removes_it():
+    """
+    The ablation's whole claim, tested directly.
+
+    With attention on, changing one driver's window must move another driver's
+    prediction -- otherwise the mechanism is inert and any score difference
+    comes from somewhere else. With attention off, it must not move at all,
+    otherwise the control is not a control.
+    """
+    mask = np.ones((1, D), dtype="float32")
+    rng = np.random.default_rng(3)
+    base = rng.standard_normal((1, D, T, F)).astype("float32")
+
+    perturbed = base.copy()
+    perturbed[0, 1] = rng.standard_normal((T, F)).astype("float32") * 3.0
+
+    def driver0_pit(use_attention):
+        config.set_seed()
+        m = build_mtl_attention(seq_len=T, n_features=F, max_drivers=D,
+                                pos_weight=9.93, use_attention=use_attention)
+        a = m.predict({"windows": base, "driver_mask": mask}, verbose=0)["pit"][0, 0, 0]
+        b = m.predict({"windows": perturbed, "driver_mask": mask}, verbose=0)["pit"][0, 0, 0]
+        return float(a), float(b)
+
+    on_a, on_b = driver0_pit(True)
+    off_a, off_b = driver0_pit(False)
+
+    assert abs(on_a - on_b) > 1e-6, (
+        "attention is on but driver 0 ignored a change to driver 1 -- "
+        "the cross-driver mechanism is inert"
+    )
+    assert off_a == pytest.approx(off_b, abs=1e-7), (
+        "attention is off yet driver 0 still saw driver 1 -- "
+        "the ablation control leaks"
+    )
+
+
 def test_an_all_padding_grid_yields_finite_loss(model):
     """A grid with no real drivers must not divide by zero."""
     mask = np.zeros((B, D), dtype="float32")

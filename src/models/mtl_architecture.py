@@ -173,8 +173,18 @@ def build_mtl_attention(seq_len: int, n_features: int, max_drivers: int,
                         attn_heads: int = 4, attn_key_dim: int = 16,
                         ff_units: int = 64, dropout: float = 0.4,
                         learning_rate: float = 5e-4,
-                        task_weights: dict | None = None) -> MultiTaskRaceEngineer:
-    """Assemble the encoder, the cross-driver attention block and the four heads."""
+                        task_weights: dict | None = None,
+                        use_attention: bool = True) -> MultiTaskRaceEngineer:
+    """
+    Assemble the encoder, the cross-driver attention block and the four heads.
+
+    ``use_attention=False`` removes the attention sub-block and nothing else --
+    the encoder, the feed-forward block, the normalisations and all four heads
+    are untouched, so each driver is then encoded in complete isolation. That
+    switch exists for the ablation: it is the only honest way to attribute a
+    score difference to the cross-driver mechanism rather than to the extra
+    depth and parameters that arrive with it.
+    """
     windows = keras.Input(shape=(max_drivers, seq_len, n_features), name="windows")
     driver_mask = keras.Input(shape=(max_drivers,), name="driver_mask")
 
@@ -189,16 +199,26 @@ def build_mtl_attention(seq_len: int, n_features: int, max_drivers: int,
     # 2. Cross-driver attention. The mask is (B, D, D): entry (i, j) says whether
     #    driver i may attend driver j. Both axes are masked, so neither a padded
     #    query nor a padded key takes part.
-    mask_q = ops.cast(driver_mask, "bool")[:, :, None]
-    mask_k = ops.cast(driver_mask, "bool")[:, None, :]
-    attn_mask = ops.logical_and(mask_q, mask_k)
+    if use_attention:
+        mask_q = ops.cast(driver_mask, "bool")[:, :, None]
+        mask_k = ops.cast(driver_mask, "bool")[:, None, :]
+        attn_mask = ops.logical_and(mask_q, mask_k)
 
-    attended = layers.MultiHeadAttention(
-        num_heads=attn_heads, key_dim=attn_key_dim, dropout=dropout,
-        name="cross_driver_attention",
-    )(query=encoded, value=encoded, key=encoded, attention_mask=attn_mask)
-    x = layers.Add(name="attention_residual")([encoded, attended])
-    x = layers.LayerNormalization(name="attention_norm")(x)
+        attended = layers.MultiHeadAttention(
+            num_heads=attn_heads, key_dim=attn_key_dim, dropout=dropout,
+            name="cross_driver_attention",
+        )(query=encoded, value=encoded, key=encoded, attention_mask=attn_mask)
+        x = layers.Add(name="attention_residual")([encoded, attended])
+        x = layers.LayerNormalization(name="attention_norm")(x)
+    else:
+        # Ablation control: every driver stays isolated from every other.
+        # The mask is still applied -- zeroing padded slots, which leaves real
+        # drivers untouched -- both because it is correct and because the
+        # functional graph requires the driver_mask input to be consumed.
+        x = layers.Multiply(name="mask_padding")(
+            [encoded, ops.expand_dims(driver_mask, axis=-1)]
+        )
+        x = layers.LayerNormalization(name="attention_norm")(x)
 
     # 3. Position-wise feed-forward block -- the standard transformer second
     #    half, applied across drivers rather than across tokens.
