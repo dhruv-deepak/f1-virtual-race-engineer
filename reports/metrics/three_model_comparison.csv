@@ -1,0 +1,5 @@
+model,params,train_s,ms_per_lap,threshold,accuracy,balanced_accuracy,precision,recall,f1,roc_auc,pr_auc
+Never-pit baseline,,,,0.5,0.9148,0.5,0.0,0.0,0.0,0.5,0.0852
+Model 1 — Bi-LSTM,104769.0,53.04,0.061,0.779,0.8642,0.6713,0.2982,0.4388,0.3551,0.8058,0.3232
+Model 2 — CNN–BiLSTM,8881.0,49.2,0.0479,0.796,0.8404,0.676,0.2613,0.4778,0.3378,0.7717,0.3055
+Model 3 — MTL + attention,48394.0,61.83,0.0271,0.708,0.8177,0.6732,0.2334,0.4989,0.3181,0.7555,0.265
