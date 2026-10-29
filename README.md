@@ -144,7 +144,7 @@ python -m src.models.train --model bilstm
 | 2 | Feature engineering and sequence dataset | ✅ |
 | 3 | **Model 1: Bi-LSTM** — training, curves, confusion matrix | ✅ |
 | 4 | Model 2: CNN–BiLSTM | ✅ |
-| 5 | Model 3: Multi-task Transformer with cross-driver attention | ⬜ |
+| 5 | Model 3: Multi-task Transformer with cross-driver attention | ✅ |
 | 6 | Three-model comparison + historical race replay | ⬜ |
 | 7 | Final report and presentation | ⬜ |
 
@@ -162,6 +162,68 @@ Test set: the full 2024 season, 22,228 windows, 8.52% positive.
 | **Model 1 — Bi-LSTM** @ 0.50 | 104,769 | 0.7285 | **0.7271** | 0.199 | **0.725** | 0.313 | **0.806** | **0.323** |
 | **Model 1 — Bi-LSTM** @ tuned 0.779 | 104,769 | 0.8642 | 0.6713 | 0.298 | 0.439 | **0.355** | 0.806 | 0.323 |
 | **Model 2 — CNN–BiLSTM** @ tuned 0.796 | 8,881 | 0.8404 | 0.6760 | 0.261 | 0.478 | 0.338 | 0.772 | 0.306 |
+| **Model 3 — MTL + cross-driver attention** @ tuned 0.708 | 48,394 | 0.8177 | 0.6732 | 0.233 | 0.499 | 0.318 | 0.756 | 0.265 |
+
+### Model 3 — Multi-task with cross-driver attention
+
+The project's proposed contribution, and the one mechanism neither other model
+has. A shared Bi-LSTM encodes each driver's window with the same weights, then
+multi-head attention runs **across the driver axis** with a residual and layer
+norm, followed by a position-wise feed-forward block — a transformer block
+applied over drivers rather than over tokens. Four heads share the result: pit,
+next compound, next-lap pace, and race outcome.
+
+To make this possible the samples are regrouped into `(race, lap)` grids of up
+to 20 drivers. The feature tensors are taken straight from `sequences.npz` and
+only reindexed, so Model 3 sees byte-identical features, the identical
+train-only scaler and the identical season splits as Models 1 and 2.
+
+#### Ablation: does cross-driver attention earn its place?
+
+A width sweep would say which Model 3 is best; it would not answer the question
+the project is actually asking. So the sweep is a 2×2 ablation — attention
+on/off crossed with multi-task on/off — plus two width variants. Selection on
+validation PR-AUC, as for the other models. Full results in
+[`reports/metrics/mtl_ablation.csv`](reports/metrics/mtl_ablation.csv),
+reproducible via `python scripts/ablate_model3.py`.
+
+| Config | Attention | Multi-task | Params | Val PR-AUC | Test PR-AUC |
+|---|---|---|---|---|---|
+| A — full Model 3 | ✅ | ✅ | 48,394 | 0.2936 | 0.265 |
+| B | ✅ | — | 48,394 | 0.3007 | 0.280 |
+| C | — | ✅ | 31,754 | **0.3122** | **0.312** |
+| D — control | — | — | 31,754 | 0.3112 | 0.308 |
+
+| Effect | Comparison | Δ Test PR-AUC |
+|---|---|---|
+| Attention, with multi-task | A vs C | **−0.047** |
+| Attention, pit head only | B vs D | **−0.027** |
+| Multi-task, with attention | A vs B | −0.015 |
+| Multi-task, no attention | C vs D | +0.004 |
+
+**The finding is negative and consistent: cross-driver attention hurts.** It
+costs performance in both conditions, with and without the auxiliary heads.
+Multi-task learning is roughly neutral — slightly negative alongside attention,
+slightly positive without it.
+
+Two explanations, neither flattering but both testable:
+
+* **The grid layout collapses the training signal.** Regrouping by `(race, lap)`
+  turns 38,890 training windows into **2,181 training grids**. The same
+  driver-laps are covered, but the number of gradient updates per epoch falls
+  roughly 18-fold — and attention adds parameters at precisely the moment the
+  number of examples drops.
+* **The competitor context is already in the features.** Gap to leader,
+  intervals ahead and behind, share of the field already stopped, and tyre age
+  relative to the field are all engineered into the 55 inputs. Attention may be
+  relearning, noisily and from far fewer examples, what those features already
+  state directly.
+
+Model 3's reported row is configuration A, the architecture as proposed.
+Configurations C and D are ablation *controls*, not candidate configurations:
+switching attention off changes what the model is, unlike the width sweeps that
+selected Models 1 and 2. Reporting C as "Model 3" would mislabel the
+architecture and bury the result.
 
 ### Model 2 — CNN–BiLSTM
 
