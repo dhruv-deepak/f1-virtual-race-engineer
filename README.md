@@ -145,7 +145,7 @@ python -m src.models.train --model bilstm
 | 3 | **Model 1: Bi-LSTM** — training, curves, confusion matrix | ✅ |
 | 4 | Model 2: CNN–BiLSTM | ✅ |
 | 5 | Model 3: Multi-task Transformer with cross-driver attention | ✅ |
-| 6 | Three-model comparison + historical race replay | ⬜ |
+| 6 | Three-model comparison + historical race replay | ✅ |
 | 7 | Final report and presentation | ⬜ |
 
 ---
@@ -163,6 +163,38 @@ Test set: the full 2024 season, 22,228 windows, 8.52% positive.
 | **Model 1 — Bi-LSTM** @ tuned 0.779 | 104,769 | 0.8642 | 0.6713 | 0.298 | 0.439 | **0.355** | 0.806 | 0.323 |
 | **Model 2 — CNN–BiLSTM** @ tuned 0.796 | 8,881 | 0.8404 | 0.6760 | 0.261 | 0.478 | 0.338 | 0.772 | 0.306 |
 | **Model 3 — MTL + cross-driver attention** @ tuned 0.708 | 48,394 | 0.8177 | 0.6732 | 0.233 | 0.499 | 0.318 | 0.756 | 0.265 |
+
+### Race replay — AI recommendations vs. actual team decisions
+
+Per-lap metrics answer *"how often is the model right about a lap"*. A race
+engineer asks something different: **of the stops that happened, how many did we
+see coming, and how early?** The replay scores per *stop* across all 24 races of
+the 2024 season — none of which any model saw in training.
+
+Consecutive firing laps before one stop count as a single alarm, not three;
+counting each lap separately would badly overstate the noise, because the label
+itself spans a three-lap window.
+
+| Model | Stops anticipated | % | Median lead | False alarms per driver-race |
+|---|---|---|---|---|
+| Model 1 — Bi-LSTM | 314 / 644 | 48.8% | 3 laps | **0.14** |
+| Model 2 — CNN–BiLSTM | **356 / 644** | **55.3%** | 3 laps | 0.22 |
+| Model 3 — MTL + attention | 355 / 644 | 55.1% | 3 laps | 0.27 |
+
+**The operational ranking is not the per-lap ranking.** Model 1 leads on PR-AUC
+but anticipates the *fewest* stops; its higher tuned threshold makes it the most
+conservative, which buys the lowest false-alarm rate. Model 2 catches 42 more
+stops across the season for one extra false alarm roughly every 12 driver-races.
+Which is preferable is a strategy call, not a modelling one — and that the two
+views disagree is exactly what the replay exists to expose.
+
+In absolute terms the false-alarm rate is low enough to be usable: a strategist
+sees a spurious warning roughly once every four to seven driver-races, while
+getting about three laps of warning on more than half of all real stops.
+
+`reports/figures/replay_grid_2024_11.png` shows the whole field for one race —
+probability building across every driver's stint and collapsing the moment they
+stop.
 
 ### Model 3 — Multi-task with cross-driver attention
 
