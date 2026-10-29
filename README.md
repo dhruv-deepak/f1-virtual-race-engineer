@@ -117,8 +117,10 @@ present results, not to hold logic.
 pip install -r requirements.txt
 ```
 
-Requires Python 3.10+. A CUDA GPU is optional but speeds up training
-considerably (developed on an RTX 3050).
+Requires Python 3.10+. Training runs on CPU: the pinned TensorFlow build is not
+compiled with CUDA, and on native Windows TensorFlow has not shipped GPU support
+since 2.10. Model 1 trains in well under two minutes regardless, so this has not
+been worth changing.
 
 ```bash
 # Phase 1 — download and cache the FastF1 data (slow on first run, ~30-60 min)

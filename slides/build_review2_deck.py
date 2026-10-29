@@ -21,7 +21,7 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
 SRC = Path(os.environ.get("REVIEW1_PPTX", r"C:\E\VIT\VIT 7th Sem\Deep Learning Project\Review-1.pptx"))
 OUT = Path(r"C:\E\VIT\VIT 7th Sem\Deep Learning Project\Review-2.pptx")
-FIG = Path(r"C:\E\Project\Project\reports\figures")
+FIG = Path(__file__).resolve().parents[1] / "reports" / "figures"
 
 # ---------------------------------------------------------------- tokens ----
 LEFT      = 661475            # 0.723"
@@ -467,7 +467,7 @@ items = [("Optimiser", "Adam, learning rate 5×10⁻⁴, batch size 256."),
          ("Early stopping", "On validation PR-AUC, not validation loss — under imbalance the loss can "
                             "improve while the model gets worse at finding stops."),
          ("Threshold", "Tuned on validation to maximise F1, then applied unchanged to test."),
-         ("Reproducibility", "Python, NumPy and TensorFlow all seeded; 11 epochs in 53 seconds on an RTX 3050.")]
+         ("Reproducibility", "Python, NumPy and TensorFlow all seeded; 11 epochs in 53 seconds on CPU.")]
 for i, (k, v) in enumerate(items):
     y = 1_950_000 + i * 700_000
     rrect(s, LEFT, y, 5_600_000, 600_000, CARD, adj=0.06, line=CHIP_MID)
