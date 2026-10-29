@@ -10,7 +10,7 @@ scores and confusion matrices genuinely comparable.
 Registry
 --------
     bilstm      Model 1 -- Bi-LSTM sequential baseline          (Review 2)
-    cnn_bilstm  Model 2 -- reserved                             (Phase 4)
+    cnn_bilstm  Model 2 -- CNN front end + Bi-LSTM              (Phase 4)
     mtl_attn    Model 3 -- reserved                             (Phase 5)
 """
 
@@ -109,9 +109,9 @@ def build_bilstm(input_shape: tuple[int, int], pos_weight: float = 1.0,
     recurrent dropout) moved validation PR-AUC only between 0.288 and 0.320 --
     the ceiling here is the data, not the capacity. Dropout 0.4 with light L2
     and a halved learning rate was the best-generalising setting that keeps the
-    cuDNN kernel available; recurrent dropout scored comparably but disables
-    cuDNN and triples training time, which is a poor trade for a system whose
-    premise is real-time inference.
+    fused LSTM kernel available; recurrent dropout scored comparably but forces
+    the unrolled step-by-step path and triples training time, which is a poor
+    trade for a system whose premise is real-time inference.
     """
     reg = regularizers.l2(l2) if l2 else None
     model = keras.Sequential(
@@ -140,10 +140,75 @@ def build_bilstm(input_shape: tuple[int, int], pos_weight: float = 1.0,
 
 
 # ---------------------------------------------------------------------------
+# Model 2 -- CNN-BiLSTM
+# ---------------------------------------------------------------------------
+def build_cnn_bilstm(input_shape: tuple[int, int], pos_weight: float = 1.0,
+                     learning_rate: float = 5e-4, filters: int = 64,
+                     kernel_size: int = 3, lstm_units: int = 32,
+                     dropout: float = 0.4, l2: float = 1e-4) -> keras.Model:
+    """
+    1D convolutional front end feeding a bidirectional LSTM.
+
+    The premise, following Sasikumar et al. (2025), is a division of labour the
+    plain Bi-LSTM does not have. The convolutions slide over the *lap* axis and
+    pick up short local motifs -- a three-lap burst of degradation, a lap-time
+    spike from traffic or a safety car, a sudden drop after a tyre change --
+    and hand those cleaner, higher-level features to the recurrent layer, which
+    is then left to model only how they evolve across the window. A bare LSTM
+    has to discover those motifs and their evolution in the same weights.
+
+    No pooling layer
+    ----------------
+    Textbook CNN-LSTM stacks pool between the convolutions and the recurrent
+    layer. Here the sequence is only SEQ_LEN = 10 steps long, so even a stride-2
+    pool would throw away half the temporal resolution the recurrent layer
+    exists to read. The convolutions therefore use ``padding="same"`` and the
+    full 10 steps reach the LSTM.
+
+    Batch normalisation sits after each convolution: the 55 input features are
+    standardised globally, but the convolution outputs are not, and normalising
+    them keeps the recurrent layer's inputs in a stable range from the first
+    epoch -- which matters when, as here, training stops after a handful of
+    epochs.
+
+    Regularisation mirrors Model 1 (dropout 0.4, light L2, halved learning
+    rate) so the comparison in Review 3 isolates the architecture rather than
+    the tuning effort.
+    """
+    reg = regularizers.l2(l2) if l2 else None
+    model = keras.Sequential(
+        [
+            keras.Input(shape=input_shape, name="lap_window"),
+            layers.Conv1D(filters, kernel_size, padding="same", activation="relu",
+                          kernel_regularizer=reg, name="conv_1"),
+            layers.BatchNormalization(name="batchnorm_1"),
+            layers.Conv1D(filters, kernel_size, padding="same", activation="relu",
+                          kernel_regularizer=reg, name="conv_2"),
+            layers.BatchNormalization(name="batchnorm_2"),
+            layers.Dropout(dropout, name="dropout_1"),
+            layers.Bidirectional(
+                layers.LSTM(lstm_units, kernel_regularizer=reg), name="bilstm"
+            ),
+            layers.Dropout(dropout, name="dropout_2"),
+            layers.Dense(32, activation="relu", kernel_regularizer=reg, name="dense"),
+            layers.Dense(1, activation="sigmoid", name="pit_probability"),
+        ],
+        name="cnn_bilstm",
+    )
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
+        loss=WeightedBCE(pos_weight=pos_weight),
+        metrics=standard_metrics(),
+    )
+    return model
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 BUILDERS = {
     "bilstm": build_bilstm,
+    "cnn_bilstm": build_cnn_bilstm,
 }
 
 
