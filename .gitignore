@@ -41,3 +41,6 @@ desktop.ini
 # ---- Logs ----
 logs/
 *.log
+
+# ---- Demo payload (regenerate: python -m src.evaluation.export_demo_data) ----
+reports/demo/replay_data.json

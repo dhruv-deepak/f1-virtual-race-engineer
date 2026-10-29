@@ -1,0 +1,338 @@
+<title>Virtual Race Engineer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Raleway:wght@500;600;700&family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: pit-wall console — control bar, trace, live readout, season strip. */
+  :root {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --surface-2: #eceef2;
+    --ink: #15151e;
+    --ink-2: #4a4a58;
+    --ink-3: #85858f;
+    --rule: #d9dbe2;
+    --accent: #c41e3a;          /* the stop marker: F1 crimson */
+    --m1: #2a78d6;
+    --m2: #d4581f;
+    --m3: #10876a;
+    --band: rgba(196, 30, 58, 0.09);
+    --font-display: "Raleway", "Segoe UI", system-ui, sans-serif;
+    --font-body: "Roboto", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "Roboto Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101015;
+      --surface: #1a1a22;
+      --surface-2: #23232d;
+      --ink: #f2f2f5;
+      --ink-2: #b4b4c0;
+      --ink-3: #7e7e8c;
+      --rule: #32323e;
+      --accent: #ff4d6a;
+      --m1: #5aa0f0;
+      --m2: #ff8a4c;
+      --m3: #35c79a;
+      --band: rgba(255, 77, 106, 0.14);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101015;
+    --surface: #1a1a22;
+    --surface-2: #23232d;
+    --ink: #f2f2f5;
+    --ink-2: #b4b4c0;
+    --ink-3: #7e7e8c;
+    --rule: #32323e;
+    --accent: #ff4d6a;
+    --m1: #5aa0f0;
+    --m2: #ff8a4c;
+    --m3: #35c79a;
+    --band: rgba(255, 77, 106, 0.14);
+    color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--ink); font-family: var(--font-body); }
+  .wrap {
+    max-width: 1180px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 28px 44px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.5rem, 4vw, 2.1rem);
+       margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+  .sub { color: var(--ink-2); font-size: .94rem; margin: 6px 0 0; max-width: 68ch; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase;
+             color: var(--ink-3); font-weight: 700; }
+
+  .panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; padding: 16px; }
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1 1 190px; }
+  .field label { font-size: .72rem; letter-spacing: .1em; text-transform: uppercase;
+                 color: var(--ink-3); font-weight: 700; }
+  select, button {
+    font: inherit; font-size: .9rem; color: var(--ink); background: var(--surface-2);
+    border: 1px solid var(--rule); border-radius: 7px; padding: 9px 11px; min-width: 0;
+  }
+  button { cursor: pointer; font-weight: 500; }
+  button:hover { border-color: var(--ink-3); }
+  button:focus-visible, select:focus-visible { outline: 2px solid var(--m1); outline-offset: 2px; }
+  .play { background: var(--accent); border-color: var(--accent); color: #fff; min-width: 108px; }
+  .play:hover { filter: brightness(1.08); border-color: var(--accent); }
+
+  .lapline { display: flex; align-items: center; gap: 12px; padding: 0 16px 16px; }
+  .lapline input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .lapnum { font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+            font-size: 1.05rem; font-weight: 500; min-width: 86px; }
+
+  .trace { padding: 14px 10px 6px; }
+  svg { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  .readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .model { padding: 14px; display: flex; flex-direction: column; gap: 9px; }
+  .model .top { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  .mname { font-family: var(--font-display); font-weight: 600; font-size: .95rem; }
+  .bar { height: 7px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+  .bar span { display: block; height: 100%; border-radius: 4px; transition: width .12s linear; }
+  .prow { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .pval { font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+          font-size: 1.32rem; font-weight: 500; }
+  .pill { font-size: .7rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+          padding: 3px 9px; border-radius: 999px; border: 1px solid var(--rule);
+          color: var(--ink-3); white-space: nowrap; }
+  .pill.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .verdicts { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .stop { border-top: 1px solid var(--rule); padding-top: 11px; }
+  .stop:first-of-type { border-top: 0; padding-top: 0; }
+  .stoph { font-family: var(--font-display); font-weight: 600; font-size: .92rem; margin-bottom: 7px; }
+  .calls { display: flex; flex-wrap: wrap; gap: 7px; }
+  .call { font-size: .78rem; padding: 4px 9px; border-radius: 6px; background: var(--surface-2);
+          border: 1px solid var(--rule); }
+  .call b { font-family: var(--font-mono); font-weight: 500; }
+  .miss { color: var(--ink-3); }
+
+  table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+  th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  td { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  td:first-child { font-family: var(--font-body); }
+  .scroller { overflow-x: auto; }
+  .note { font-size: .8rem; color: var(--ink-3); line-height: 1.5; }
+  .hdr { display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between; align-items: flex-end; }
+  @media (prefers-reduced-motion: reduce) { .bar span { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Formula 1 · 2024 season · held-out test set</p>
+    <h1>Virtual Race Engineer</h1>
+    <p class="sub">Three deep learning models watch a race lap by lap and estimate the chance each
+      driver pits within the next three laps. Nothing here was seen during training — press
+      <strong>Replay race</strong> to watch the calls arrive against what the team actually did.</p>
+  </header>
+
+  <section class="panel">
+    <div class="controls">
+      <div class="field">
+        <label for="race">Grand Prix</label>
+        <select id="race"></select>
+      </div>
+      <div class="field">
+        <label for="driver">Driver</label>
+        <select id="driver"></select>
+      </div>
+      <button id="play" class="play" type="button">Replay race</button>
+    </div>
+    <div class="lapline">
+      <span class="lapnum" id="lapnum">Lap —</span>
+      <input type="range" id="lap" min="0" max="1" value="1" aria-label="Lap">
+    </div>
+    <div class="trace"><svg id="chart" role="img" aria-label="Pit probability by lap"></svg></div>
+  </section>
+
+  <section class="readout" id="readout"></section>
+
+  <section class="panel verdicts">
+    <p class="eyebrow">Call sheet — AI vs. the pit wall</p>
+    <div id="verdicts"></div>
+  </section>
+
+  <section class="panel" style="padding:16px">
+    <p class="eyebrow" style="margin-bottom:10px">Whole 2024 season — 644 real pit stops</p>
+    <div class="scroller"><table id="season"></table></div>
+    <p class="note" style="margin-top:10px">A stop counts as anticipated when a model crossed its
+      own tuned threshold during the three laps before it. Consecutive crossings before one stop
+      count as a single call, not three.</p>
+  </section>
+</div>
+
+<script>
+const DATA = /*__DATA__*/;
+
+const COL = { bilstm: "--m1", cnn_bilstm: "--m2", mtl_attn: "--m3" };
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = id => document.getElementById(id);
+
+let race = null, driver = null, timer = null;
+
+function raceIds() {
+  return Object.keys(DATA.races).sort((a, b) => DATA.races[a].round - DATA.races[b].round);
+}
+
+function initRaces() {
+  $("race").innerHTML = raceIds().map(id =>
+    `<option value="${id}">R${String(DATA.races[id].round).padStart(2, "0")} — ${DATA.races[id].name}</option>`
+  ).join("");
+}
+
+function initDrivers() {
+  const ds = Object.keys(DATA.races[race].drivers).sort();
+  if (!ds.includes(driver)) driver = ds.includes("VER") ? "VER" : ds[0];
+  $("driver").innerHTML = ds.map(d => `<option value="${d}"${d === driver ? " selected" : ""}>${d}</option>`).join("");
+}
+
+const cur = () => DATA.races[race].drivers[driver];
+
+function setLapRange() {
+  const d = cur(), s = $("lap");
+  s.min = 0; s.max = d.laps.length - 1; s.value = d.laps.length - 1;
+}
+
+/* ---------------------------------------------------------------- chart -- */
+function drawChart(upto) {
+  const d = cur(), laps = d.laps;
+  const W = 900, H = 340, L = 52, R = 18, T = 18, B = 42;
+  const x = i => L + (laps.length < 2 ? 0 : (W - L - R) * i / (laps.length - 1));
+  const y = p => T + (H - T - B) * (1 - p);
+  const rule = css("--rule"), ink3 = css("--ink-3"), accent = css("--accent");
+  let s = "";
+
+  // the three-lap window in which a correct call had to fire
+  for (const stop of d.stops) {
+    const a = laps.indexOf(stop - DATA.horizon), b = laps.indexOf(stop - 1);
+    if (a >= 0 && b >= 0) s += `<rect x="${x(a)}" y="${T}" width="${Math.max(x(b) - x(a), 2)}" height="${H - T - B}" fill="${css("--band")}"/>`;
+  }
+  // horizontal grid
+  for (let p = 0; p <= 1.0001; p += 0.25) {
+    s += `<line x1="${L}" y1="${y(p)}" x2="${W - R}" y2="${y(p)}" stroke="${rule}" stroke-width="1"/>`;
+    s += `<text x="${L - 10}" y="${y(p) + 4}" text-anchor="end" font-size="12" fill="${ink3}">${p.toFixed(2)}</text>`;
+  }
+  // lap axis
+  const step = Math.max(1, Math.ceil(laps.length / 10));
+  for (let i = 0; i < laps.length; i += step) {
+    s += `<text x="${x(i)}" y="${H - B + 20}" text-anchor="middle" font-size="12" fill="${ink3}">${laps[i]}</text>`;
+  }
+  s += `<text x="${(L + W - R) / 2}" y="${H - 4}" text-anchor="middle" font-size="12" fill="${ink3}">Lap</text>`;
+
+  // each model's threshold, then its trace up to the current lap
+  for (const m of DATA.models) {
+    const c = css(COL[m.key]);
+    s += `<line x1="${L}" y1="${y(m.threshold)}" x2="${W - R}" y2="${y(m.threshold)}" stroke="${c}" stroke-width="1" stroke-dasharray="3 4" opacity="0.55"/>`;
+    const pts = d.p[m.key].slice(0, upto + 1).map((p, i) => `${x(i)},${y(p)}`).join(" ");
+    s += `<polyline points="${pts}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  // actual stops
+  for (const stop of d.stops) {
+    const i = laps.indexOf(stop);
+    const px = i >= 0 ? x(i) : (stop > laps[laps.length - 1] ? W - R : L);
+    s += `<line x1="${px}" y1="${T}" x2="${px}" y2="${H - B}" stroke="${accent}" stroke-width="2"/>`;
+    s += `<text x="${px}" y="${T - 5}" text-anchor="middle" font-size="11" font-weight="700" fill="${accent}">PIT ${stop}</text>`;
+  }
+  // playhead
+  s += `<line x1="${x(upto)}" y1="${T}" x2="${x(upto)}" y2="${H - B}" stroke="${css("--ink-2")}" stroke-width="1" opacity="0.5"/>`;
+
+  const c = $("chart");
+  c.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  c.innerHTML = s;
+}
+
+/* -------------------------------------------------------------- readout -- */
+function drawReadout(upto) {
+  const d = cur();
+  $("readout").innerHTML = DATA.models.map(m => {
+    const p = d.p[m.key][upto], on = p >= m.threshold;
+    const c = `var(${COL[m.key]})`;
+    return `<article class="panel model">
+      <div class="top"><span class="dot" style="background:${c}"></span>
+        <span class="mname">${m.label}</span></div>
+      <div class="prow"><span class="pval" style="color:${c}">${p.toFixed(3)}</span>
+        <span class="pill${on ? " on" : ""}">${on ? "Box this lap" : "Stay out"}</span></div>
+      <div class="bar"><span style="width:${(p * 100).toFixed(1)}%;background:${c}"></span></div>
+      <p class="note">Threshold ${m.threshold.toFixed(3)}</p>
+    </article>`;
+  }).join("");
+}
+
+/* ------------------------------------------------------------- verdicts -- */
+function drawVerdicts() {
+  const d = cur();
+  if (!d.stops.length) {
+    $("verdicts").innerHTML = `<p class="note">${driver} made no pit stop inside the recorded
+      window of this race.</p>`;
+    return;
+  }
+  $("verdicts").innerHTML = d.stops.map(stop => {
+    const calls = DATA.models.map(m => {
+      let first = null;
+      for (let i = 0; i < d.laps.length; i++) {
+        const lap = d.laps[i];
+        if (lap >= stop - DATA.horizon && lap <= stop - 1 && d.p[m.key][i] >= m.threshold) { first = lap; break; }
+      }
+      return first === null
+        ? `<span class="call miss">${m.label} — no call</span>`
+        : `<span class="call">${m.label} — flagged lap <b>${first}</b>, <b>${stop - first}</b> lap${stop - first === 1 ? "" : "s"} early</span>`;
+    }).join("");
+    return `<div class="stop"><p class="stoph">Team pitted ${driver} on lap ${stop}</p>
+      <div class="calls">${calls}</div></div>`;
+  }).join("");
+}
+
+function drawSeason() {
+  const rows = DATA.season_summary.map(r =>
+    `<tr><td>${r.model}</td><td>${r.anticipated} / ${r.stops}</td><td>${r.pct.toFixed(1)}%</td>
+     <td>${r.median_lead.toFixed(0)}</td><td>${r.false_alarms_per_driver_race.toFixed(2)}</td></tr>`).join("");
+  $("season").innerHTML = `<thead><tr><th>Model</th><th>Stops anticipated</th><th>%</th>
+    <th>Median lead (laps)</th><th>False alarms / driver-race</th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+/* ---------------------------------------------------------------- wiring -- */
+function render() {
+  const i = +$("lap").value, d = cur();
+  $("lapnum").textContent = `Lap ${d.laps[i]}`;
+  drawChart(i); drawReadout(i);
+}
+
+function stop() { if (timer) { clearInterval(timer); timer = null; } $("play").textContent = "Replay race"; }
+
+function play() {
+  if (timer) { stop(); return; }
+  const s = $("lap");
+  s.value = 0; render();
+  $("play").textContent = "Pause";
+  timer = setInterval(() => {
+    if (+s.value >= +s.max) { stop(); return; }
+    s.value = +s.value + 1; render();
+  }, 170);
+}
+
+function selectRace(id) {
+  stop(); race = id; initDrivers(); setLapRange(); render(); drawVerdicts();
+}
+
+$("race").addEventListener("change", e => selectRace(e.target.value));
+$("driver").addEventListener("change", e => { stop(); driver = e.target.value; setLapRange(); render(); drawVerdicts(); });
+$("lap").addEventListener("input", () => { stop(); render(); });
+$("play").addEventListener("click", play);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+
+initRaces();
+drawSeason();
+selectRace(raceIds().includes("2024_11") ? "2024_11" : raceIds()[0]);
+$("race").value = race;
+</script>
