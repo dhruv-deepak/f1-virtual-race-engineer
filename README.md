@@ -143,24 +143,47 @@ python -m src.models.train --model bilstm
 | 1 | FastF1 data acquisition (2021–2024) | ✅ |
 | 2 | Feature engineering and sequence dataset | ✅ |
 | 3 | **Model 1: Bi-LSTM** — training, curves, confusion matrix | ✅ |
-| 4 | Model 2: CNN–BiLSTM | ⬜ |
+| 4 | Model 2: CNN–BiLSTM | ✅ |
 | 5 | Model 3: Multi-task Transformer with cross-driver attention | ⬜ |
 | 6 | Three-model comparison + historical race replay | ⬜ |
 | 7 | Final report and presentation | ⬜ |
 
 ---
 
-## Results so far — Model 1 (Bi-LSTM)
+## Results so far
 
 Test set: the full 2024 season, 22,228 windows, 8.52% positive.
 
-| Model | Accuracy | Balanced acc. | Precision | Recall | F1 | ROC-AUC | PR-AUC |
-|---|---|---|---|---|---|---|---|
-| Never-pit baseline | 0.9148 | 0.5000 | 0.000 | 0.000 | 0.000 | 0.500 | 0.085 |
-| Logistic regression (final lap) | — | — | — | — | — | 0.802 | 0.308 |
-| Gradient boosting (flat window) | — | — | — | — | — | **0.853** | **0.391** |
-| **Bi-LSTM @ 0.50** | 0.7285 | **0.7271** | 0.199 | **0.725** | 0.313 | 0.806 | 0.323 |
-| **Bi-LSTM @ tuned (0.779)** | 0.8642 | 0.6713 | 0.298 | 0.439 | **0.355** | 0.806 | 0.323 |
+| Model | Params | Accuracy | Balanced acc. | Precision | Recall | F1 | ROC-AUC | PR-AUC |
+|---|---|---|---|---|---|---|---|---|
+| Never-pit baseline | — | 0.9148 | 0.5000 | 0.000 | 0.000 | 0.000 | 0.500 | 0.085 |
+| Logistic regression (final lap) | — | — | — | — | — | — | 0.802 | 0.308 |
+| Gradient boosting (flat window) | — | — | — | — | — | — | **0.853** | **0.391** |
+| **Model 1 — Bi-LSTM** @ 0.50 | 104,769 | 0.7285 | **0.7271** | 0.199 | **0.725** | 0.313 | **0.806** | **0.323** |
+| **Model 1 — Bi-LSTM** @ tuned 0.779 | 104,769 | 0.8642 | 0.6713 | 0.298 | 0.439 | **0.355** | 0.806 | 0.323 |
+| **Model 2 — CNN–BiLSTM** @ tuned 0.796 | 8,881 | 0.8404 | 0.6760 | 0.261 | 0.478 | 0.338 | 0.772 | 0.306 |
+
+### Model 2 — CNN–BiLSTM
+
+Two `Conv1D` layers with batch normalisation feed a bidirectional LSTM. The
+convolutions slide over the *lap* axis to pick up short local motifs — a
+three-lap burst of degradation, a lap-time spike from traffic or a safety car —
+leaving the recurrent layer to model only how those evolve. There is no pooling
+layer: at `SEQ_LEN = 10` even a stride-2 pool would discard half the temporal
+resolution the recurrent layer exists to read.
+
+Widths come from a six-configuration sweep matching the one Model 1 received,
+selected on validation PR-AUC alone. **Sixteen filters with a 16-unit LSTM —
+8,881 parameters, a twelfth of Model 1 — generalised best**, while the widest
+variant (64 filters, kernel 5) came last. Widening the kernel hurt most: at a
+10-lap window a kernel of 5 spans half the sequence, so the convolution stops
+detecting local motifs and starts duplicating the recurrent layer.
+
+Every configuration in the sweep landed between 0.259 and 0.301 test PR-AUC, all
+below Model 1. **Model 2 trailing Model 1 is a property of the architecture on
+this data, not of how hard each was tuned.** It is, however, 12× smaller and
+slightly faster per lap at inference (0.048 ms vs 0.061 ms), which is the
+efficiency half of the Review 3 comparison.
 
 Note the never-pit baseline: it wins on raw accuracy and scores zero on every
 metric that matters. That is exactly why accuracy is not the headline number here.

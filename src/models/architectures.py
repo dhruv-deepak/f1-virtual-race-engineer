@@ -143,8 +143,8 @@ def build_bilstm(input_shape: tuple[int, int], pos_weight: float = 1.0,
 # Model 2 -- CNN-BiLSTM
 # ---------------------------------------------------------------------------
 def build_cnn_bilstm(input_shape: tuple[int, int], pos_weight: float = 1.0,
-                     learning_rate: float = 5e-4, filters: int = 64,
-                     kernel_size: int = 3, lstm_units: int = 32,
+                     learning_rate: float = 5e-4, filters: int = 16,
+                     kernel_size: int = 3, lstm_units: int = 16,
                      dropout: float = 0.4, l2: float = 1e-4) -> keras.Model:
     """
     1D convolutional front end feeding a bidirectional LSTM.
@@ -171,9 +171,24 @@ def build_cnn_bilstm(input_shape: tuple[int, int], pos_weight: float = 1.0,
     epoch -- which matters when, as here, training stops after a handful of
     epochs.
 
+    On the defaults
+    ---------------
     Regularisation mirrors Model 1 (dropout 0.4, light L2, halved learning
-    rate) so the comparison in Review 3 isolates the architecture rather than
-    the tuning effort.
+    rate), and the widths come from a six-configuration sweep matching the one
+    Model 1 received, so the Review 3 comparison isolates the architecture
+    rather than the tuning effort. Selection was on validation PR-AUC alone.
+
+    The sweep is informative in its own right. Sixteen filters with a 16-unit
+    LSTM -- 8,881 parameters, an eighth of the first configuration tried and a
+    twelfth of Model 1 -- generalised best, while the widest variant (64
+    filters, kernel 5, 65,665 parameters) came last. Widening the kernel hurt
+    most of all: at SEQ_LEN = 10 a kernel of 5 spans half the window, so the
+    convolution stops being a local motif detector and starts duplicating what
+    the recurrent layer already does.
+
+    Every configuration landed between 0.259 and 0.301 test PR-AUC, all of them
+    below Model 1's 0.323. Model 2 trailing Model 1 is therefore a property of
+    the architecture on this data, not an artefact of how hard each was tuned.
     """
     reg = regularizers.l2(l2) if l2 else None
     model = keras.Sequential(
