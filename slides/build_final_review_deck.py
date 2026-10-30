@@ -32,7 +32,9 @@ FIG = ROOT / "reports" / "figures"
 TEMPLATE = Path(os.environ.get(
     "FINAL_TEMPLATE",
     r"C:\Users\HP\Downloads\DL Project Final Review Template (1).pptx"))
-OUT = Path(r"C:\E\VIT\VIT 7th Sem\Deep Learning Project\DL-Project-Final-Review.pptx")
+OUT = Path(os.environ.get(
+    "FINAL_DECK_OUT",
+    r"C:\E\VIT\VIT 7th Sem\Deep Learning Project\DL-Project-Final-Review.pptx"))
 
 INK = RGBColor(0x1B, 0x1B, 0x27)
 BODY = RGBColor(0x3C, 0x39, 0x39)
@@ -125,16 +127,30 @@ def resize_rows(table, n_rows):
         table._tbl.remove(table._tbl.tr_lst[-1])
 
 
-def fill_table(table, rows, sizes=(9, 8.5), header_fill=HDR_BG, col_w=None):
+def fill_table(table, rows, sizes=(9, 8.5), header_fill=HDR_BG, col_w=None,
+               row_h=None, hdr_h=None, total_w=None):
+    """
+    Fill a table, optionally reshaping its columns and rows.
+
+    `col_w` is a list of relative weights. They are scaled to `total_w` when
+    given, otherwise to the table's current total width -- which must be read
+    *before* any column is modified, since reading it afterwards measures the
+    half-rewritten table and compounds the error on every later call.
+    """
     resize_rows(table, len(rows))
     if col_w:
-        total = sum(col_w)
-        for j, w in enumerate(col_w):
-            table.columns[j].width = Emu(int(table._tbl.tblGrid.gridCol_lst[0].get("w") or 0) or 0)
-        # python-pptx needs explicit widths; scale to the table's own width.
-        tw = sum(c.width for c in table.columns)
-        for j, w in enumerate(col_w):
-            table.columns[j].width = Emu(int(tw * w / total))
+        target = total_w if total_w is not None else sum(c.width for c in table.columns)
+        weight = sum(col_w)
+        for j, w in enumerate(col_w[:len(table.columns)]):
+            table.columns[j].width = Emu(int(target * w / weight))
+    if hdr_h is not None:
+        table.rows[0].height = Emu(hdr_h)
+    if row_h is not None:
+        # A row height is a minimum, not a cap: PowerPoint still grows a row
+        # whose text needs more space, so this only stops cloned template rows
+        # from carrying their original, much larger height.
+        for i in range(1, len(table.rows)):
+            table.rows[i].height = Emu(row_h)
     for i, row in enumerate(rows):
         for j, val in enumerate(row):
             if j >= len(table.columns):
@@ -435,9 +451,22 @@ LIT3 = [
      "Gains depend on task relatedness; can hurt when tasks conflict",
      "Basis of the four-head design in Model 3"],
 ]
+# The three literature slides are read as one continuous table, so they are
+# pinned to identical geometry: same left edge, same top, same width, same
+# column proportions. The template leaves each on its own placeholder position,
+# which is what made them look misaligned when flicked through.
+LIT_LEFT, LIT_TOP, LIT_WIDTH = 838200, 430000, 10515600       # 0.92", 0.47", 11.50"
+LIT_COLS = [0.55, 3.00, 2.85, 2.10, 2.40, 2.40]
+
 for idx, rows in zip((7, 8, 9), (LIT, LIT2, LIT3)):
-    fill_table(table_of(S[idx]), [HEAD] + rows, sizes=(8.5, 7),
-               col_w=[0.6, 3.1, 2.9, 2.2, 2.4, 2.4])
+    slide = S[idx]
+    frame = next(sh for sh in slide.shapes if sh.has_table)
+    frame.left, frame.top, frame.width = Emu(LIT_LEFT), Emu(LIT_TOP), Emu(LIT_WIDTH)
+    n_body = len(rows)
+    # Fill the slide down to the bottom margin and no further.
+    body_h = int((5_950_000 - 430_000) / n_body)
+    fill_table(frame.table, [HEAD] + rows, sizes=(8, 6.5), col_w=LIT_COLS,
+               total_w=LIT_WIDTH, hdr_h=430_000, row_h=body_h)
 
 # ---- 11 software and hardware ---------------------------------------------
 fill_table(table_of(S[10]), [
@@ -556,19 +585,26 @@ fill_table(gf.table, rows, sizes=(11, 10))
 box = s.shapes.add_textbox(left, Emu(4100000), width, Emu(1700000))
 tf = box.text_frame
 tf.word_wrap = True
-for i, line in enumerate([
-    "Test set: the entirely held-out 2024 season — 24 races, 22,228 driver-laps, 8.52% positive.",
-    "Read the baseline row first: predicting \u201cno pit\u201d on every lap scores 0.9148 accuracy "
-    "and exactly zero on precision, recall and F1. That is why accuracy cannot be the headline "
-    "metric for this problem.",
-    "Model 1 leads on both AUCs. Model 2 reaches within 0.017 PR-AUC of it using 12\u00d7 fewer "
-    "parameters.",
-]):
-    p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+tf.paragraphs[0].text = ("Model 1 is the most accurate pit predictor. "
+                         "Model 3 is the most capable system.")
+for r in tf.paragraphs[0].runs:
+    r.font.size, r.font.bold, r.font.name = Pt(15), True, BODY_FONT
+    r.font.color.rgb = ACCENT
+for line in [
+    "Model 3 anticipates the same share of real pit stops as the best model (55.1% against "
+    "55.3%), scores the whole grid 2.3× faster at 0.027 ms per driver-lap, and additionally "
+    "predicts race outcome at 74.9% accuracy against a 45.4% baseline — a capability neither "
+    "other architecture can produce.",
+    "Read the baseline row first: predicting “no pit” on every lap scores 0.9148 "
+    "accuracy and exactly zero on precision, recall and F1. That is why accuracy cannot be the "
+    "headline metric for this problem.",
+    "Test set: the held-out 2024 season — 24 races, 22,228 driver-laps, 8.52% positive.",
+]:
+    p = tf.add_paragraph()
     p.text = line
-    p.space_after = Pt(8)
+    p.space_after = Pt(7)
     for r in p.runs:
-        r.font.size = Pt(13)
+        r.font.size = Pt(12.5)
         r.font.name = BODY_FONT
         r.font.color.rgb = BODY
 

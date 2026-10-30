@@ -1,0 +1,10 @@
+config,seed,params,val_pr_auc,test_pr_auc
+A published  48k,42,48394,0.2936,0.265
+A published  48k,1337,48394,0.2769,0.2568
+A published  48k,2024,48394,0.3029,0.2648
+F sweep best 162k,42,162314,0.2949,0.2779
+F sweep best 162k,1337,162314,0.3214,0.3225
+F sweep best 162k,2024,162314,0.2905,0.2821
+G narrow      14k,42,13914,0.2872,0.2784
+G narrow      14k,1337,13914,0.2931,0.2802
+G narrow      14k,2024,13914,0.3166,0.2949
