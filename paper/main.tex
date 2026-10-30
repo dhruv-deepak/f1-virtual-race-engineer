@@ -269,7 +269,7 @@ All results in this paper come from the corrected pipeline. For transparency we 
 
 \subsection{Run-to-run Variance}
 
-Each configuration is trained with a single seed. Repeating the Model 3 contenders across three seeds, we observe a seed-to-seed swing in test PR-AUC that is comparable to the gap between architectures. Differences of a few thousandths in Table~\ref{tab:neural} should therefore not be read as meaningful, and a stronger evaluation would report race-level bootstrap intervals and multi-seed means.
+Each configuration in Table~\ref{tab:neural} is trained with a single seed. Repeating three Model 3 configurations across three seeds each, the widest seed-to-seed swing in test PR-AUC within a single configuration is 0.047, while the spread between the configuration means is 0.035. Run-to-run variance therefore exceeds the differences we are comparing, and one seed of the strongest configuration reached 0.322, which is level with Model 1. Differences of a few thousandths should not be read as meaningful, and the ordering in Table~\ref{tab:neural} is not established at this sample size. A stronger evaluation would report multi-seed means with race-level bootstrap intervals; we state this as a limitation of the present comparison rather than qualifying each figure individually.
 
 \subsection{Data and Evaluation Scope}
 

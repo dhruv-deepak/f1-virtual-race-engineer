@@ -93,5 +93,5 @@ print(f"\nwidest seed-to-seed test swing within one config: {spread.max():.4f}")
 print(f"gap between best and worst config mean          : "
       f"{agg['test_mean'].max() - agg['test_mean'].min():.4f}")
 print(f"\nModel 2 reference test PR-AUC: 0.3055")
-print(f"Model 1 reference test PR-AUC: 0.3232")
+print("Model 1 reference test PR-AUC: 0.3215")
 print(f"\nsaved {out}")
