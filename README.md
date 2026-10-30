@@ -61,7 +61,7 @@ competitor behaviour directly influences each prediction.
 | Source | FastF1 API (official F1 timing + telemetry + Ergast archive) |
 | Seasons | 2021 – 2024 |
 | Sessions | Race sessions |
-| Scale | 90 races, 98,357 driver-lap rows, 81,270 sequence windows |
+| Scale | 90 races downloaded, 89 usable, 98,357 driver-lap rows, 81,270 sequence windows |
 
 Raw car telemetry is sampled at ~3.7 Hz, which would be tens of gigabytes across
 all sessions. It is therefore **aggregated per lap at download time** (mean/max
@@ -71,6 +71,10 @@ The FastF1 API allows **500 calls per hour** and one race costs roughly nine of
 them, so a full sweep cannot finish inside a single window. `download.py` sleeps
 through the rate limit and resumes, and skips races already on disk, so it can be
 re-run freely.
+
+The 2021 Belgian Grand Prix is dropped automatically: it was abandoned after three
+laps behind the safety car, so no driver reaches the 13 laps a labelled window
+needs. 43 + 22 + 24 = 89 races therefore reach the models.
 
 ### Splits
 
@@ -181,10 +185,9 @@ Test set: the full 2024 season, 22,228 windows, 8.52% positive.
 | Never-pit baseline | — | 0.9148 | 0.5000 | 0.000 | 0.000 | 0.000 | 0.500 | 0.085 |
 | Logistic regression (final lap) | — | — | — | — | — | — | 0.802 | 0.308 |
 | Gradient boosting (flat window) | — | — | — | — | — | — | **0.853** | **0.391** |
-| **Model 1 — Bi-LSTM** @ 0.50 | 104,769 | 0.7285 | **0.7271** | 0.199 | **0.725** | 0.313 | **0.806** | **0.323** |
-| **Model 1 — Bi-LSTM** @ tuned 0.779 | 104,769 | 0.8642 | 0.6713 | 0.298 | 0.439 | **0.355** | 0.806 | 0.323 |
-| **Model 2 — CNN–BiLSTM** @ tuned 0.796 | 8,881 | 0.8404 | 0.6760 | 0.261 | 0.478 | 0.338 | 0.772 | 0.306 |
-| **Model 3 — MTL + cross-driver attention** @ tuned 0.708 | 48,394 | 0.8177 | 0.6732 | 0.233 | 0.499 | 0.318 | 0.756 | 0.265 |
+| **Model 1 — Bi-LSTM** @ tuned 0.772 | 104,769 | 0.8559 | 0.6725 | 0.283 | 0.451 | **0.348** | **0.802** | **0.322** |
+| **Model 2 — CNN–BiLSTM** @ tuned 0.752 | 8,881 | 0.8067 | **0.6961** | 0.235 | **0.563** | 0.332 | 0.779 | 0.289 |
+| **Model 3 — MTL + attention** @ tuned 0.688 | 48,394 | 0.8115 | 0.6784 | 0.230 | 0.518 | 0.319 | 0.754 | 0.265 |
 
 ### Race replay — AI recommendations vs. actual team decisions
 

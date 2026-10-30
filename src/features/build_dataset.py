@@ -131,7 +131,17 @@ def add_driver_features(df: pd.DataFrame) -> pd.DataFrame:
     df["lap_time"] = df["LapTime"]
     # Pace relative to this stint's own typical lap removes circuit and car
     # effects, leaving the degradation trend the model actually needs.
-    df["lap_time_delta_stint"] = df["LapTime"] - gs["LapTime"].transform("median")
+    #
+    # The median is EXPANDING, not taken over the whole stint. A median over the
+    # complete stint is look-ahead leakage: at lap t it would include laps the
+    # driver has not yet run, and in particular the slow degraded laps that
+    # immediately precede a stop. That made a pre-pit lap look artificially
+    # quick against its own stint and flipped the feature's correlation with the
+    # label from +0.036 to -0.072. An expanding median uses only laps up to and
+    # including t, which is what a live system could actually compute.
+    df["lap_time_delta_stint"] = df["LapTime"] - gs["LapTime"].transform(
+        lambda s: s.expanding().median()
+    )
     df["lap_time_diff"] = g["LapTime"].diff()
     df["lap_time_roll3_mean"] = g["LapTime"].transform(lambda s: s.rolling(3, min_periods=1).mean())
     df["lap_time_roll3_std"] = g["LapTime"].transform(lambda s: s.rolling(3, min_periods=2).std())
