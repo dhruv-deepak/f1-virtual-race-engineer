@@ -1,0 +1,10 @@
+{
+  "logistic_regression_final_lap": {
+    "roc_auc": 0.7963119131205801,
+    "pr_auc": 0.3208363283653239
+  },
+  "gradient_boosting_flat_window": {
+    "roc_auc": 0.8317817111056341,
+    "pr_auc": 0.3741132089113402
+  }
+}

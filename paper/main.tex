@@ -1,0 +1,295 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{url}
+\usepackage{array}
+\usepackage{tikz}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric}
+
+\setlength{\parskip}{2pt}
+\linespread{1.02}
+\setlength{\emergencystretch}{2em}
+
+\title{Deep Learning-Based Virtual Race Engineer for Real-Time Formula 1 Strategy Optimization}
+
+\author{%
+\IEEEauthorblockN{Dhruv Deepak, Akhil V, Mohan Simha Varma Dantuluri, and Surya Prathap Mamillapalli}
+\IEEEauthorblockA{School of Computer Science and Engineering\\
+Vellore Institute of Technology, Amaravati, India}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A pit stop is the most consequential decision a Formula One team makes during a race, and calling it a lap early or a lap late routinely changes finishing positions. We present a supervised deep learning system that predicts, from a ten-lap window of a driver's telemetry, whether that driver will pit within the next three laps. Four seasons of official timing, telemetry, weather and result data covering ninety races from 2021 to 2024 were collected through the FastF1 interface and reduced to a driver-lap table carrying fifty-five engineered features. We implement and compare three architectures under one identical protocol: a bidirectional LSTM, a convolutional front end feeding a bidirectional LSTM, and a multi-task network that applies attention across every driver on track and emits four strategic predictions from a shared representation. Because only 8.5\% of laps precede a stop, all models are trained with a class-weighted loss and reported against a never-pit baseline. On the entirely held-out 2024 season the bidirectional LSTM attains 0.802 ROC-AUC and 0.322 PR-AUC against a 0.085 base rate, and a retrospective race replay shows the convolutional model anticipating 62.9\% of the season's 644 real pit stops with a median of three laps of warning and 0.28 false alarms per driver-race. A controlled ablation shows that cross-driver attention does not improve the task on this dataset, and a gradient-boosting baseline on the same tensors remains ahead of all three networks. We also report and correct a look-ahead leak found in our own feature pipeline, and show that the conclusions are unchanged by its removal.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Formula One, pit-stop prediction, race strategy, telemetry, time-series classification, bidirectional LSTM, multi-task learning, class imbalance
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Race strategy in Formula One is shaped by tyre degradation, compound choice, fuel load, traffic, weather, safety-car periods and the roughly twenty seconds a car loses entering and leaving the pit lane. Race engineers weigh these signals continuously and commit to decisions under time pressure and uncertainty. A system that estimates the probability of an imminent stop could support that judgement, but evaluating one honestly is harder than it first appears: the event is rare, and consecutive laps from the same stint are strongly dependent.
+
+Existing work on data-driven Formula One strategy divides broadly into two strands. One applies reinforcement learning to strategy selection inside simulated race environments \cite{thomas2025explainable,veerasagar2025optimum,mendez2025pitstop}. The other applies supervised learning to real historical data, usually framing pit prediction as a binary problem over lap-level features \cite{sasikumar2025pit,fatima2023deepracing,ametsbichler2025gbm}. Related work models tyre behaviour directly through optimal control, state-space estimation or piecewise degradation curves \cite{tremlett2016tyre,cappello2026statespace,rohan2026piecewise}.
+
+We take the supervised route and work entirely on real telemetry, with no simulator and no reinforcement learning. Our task is deliberately narrow and precisely stated: given the most recent ten laps for one driver, predict whether that driver pits during the next three laps. Within that fixed task we compare two per-driver sequence models against a multi-task model that encodes every driver present on the same race lap and applies attention across the driver dimension. The comparison is designed to test one specific hypothesis, which is that a learned representation of cross-driver interaction improves on the field-relative features we engineer by hand.
+
+This paper contributes the following. We describe a reproducible pipeline from the public timing feed to trained models, with the data preparation specified in enough detail to rebuild. We report a three-way architecture comparison on a season that no model saw during training, validation or threshold selection. We report a controlled ablation of the cross-driver attention mechanism, which does not support our own hypothesis. We report an event-level race replay that measures what a strategist would actually experience, and show it ranks the models differently from the per-lap metrics. Finally, we document a look-ahead leak we found in our own feature code, the test that now prevents it, and the effect of removing it.
+
+Our research questions are: (RQ1) how do the three architectures compare on an unseen season under one identical protocol? (RQ2) does cross-driver attention, or multi-task supervision, improve pit-stop classification? (RQ3) do per-lap classification scores agree with event-level stop anticipation?
+
+\section{Related Work}
+
+\subsection{Formula One Strategy and Tyre Modelling}
+
+Sasikumar \emph{et al.} benchmark five deep architectures for pit-stop decision support on FastF1 data and report a bidirectional LSTM as their strongest model \cite{sasikumar2025pit}. Their labelling, sampling and evaluation design differ from ours, so their figures are not directly comparable to the results below, but their architecture set motivated two of our three models. Fatima and Johrendt predict pit timing and finishing rank jointly with an embedded deep network trained on 2015--2022 seasons \cite{fatima2023deepracing}. Ametsbichler \emph{et al.} frame the same problem as tabular binary classification and find gradient boosting the strongest of the classical methods they compare \cite{ametsbichler2025gbm}. Two postgraduate studies reach similar conclusions with classical learners, one comparing support vector machines, random forests and neural networks for race outcomes and the other applying ensemble methods to pit strategy \cite{aalto2023f1ml,maheshrao2023ensemble}, a result consistent with what we observe in Section~\ref{sec:baselines}. A recent preprint applies multi-task residual learning with a classification head for the next lap and a regression head for laps until the stop \cite{sosta2025multitask}, which is close in spirit to our Model 3, though applied per driver rather than across the field.
+
+Reinforcement learning approaches treat strategy as sequential decision-making rather than event classification. Thomas \emph{et al.} add feature-importance and counterfactual explanations to an RL strategy agent \cite{thomas2025explainable}; Veerasagar \emph{et al.} use a deep recurrent Q-network over race states \cite{veerasagar2025optimum}; M\'endez and Thraves compare deep RL against an exact optimisation formulation \cite{mendez2025pitstop}. All three evaluate inside simulators, whose tyre and competitor models embed assumptions that real telemetry does not. Deep Q-learning itself originates in the Atari work of Mnih \emph{et al.} \cite{mnih2013atari}.
+
+Tyre modelling is a related but distinct objective. Tremlett and Limebeer pose tyre usage as optimal control with a thermodynamic wear model \cite{tremlett2016tyre}; Cappello and Hoegh estimate latent degradation with a Bayesian state-space model in which stops act as resets \cite{cappello2026statespace}; Rohan and Farhan test piecewise against linear degradation across seven circuits \cite{rohan2026piecewise}; Todd \emph{et al.} forecast tyre energy from team telemetry \cite{todd2025tyreenergy}; Boettinger and Klotz study strategy in a simulated GT environment \cite{boettinger2023nordschleife}. A good degradation estimate does not by itself establish that a classifier anticipates the stops a team actually made, which is the quantity we measure.
+
+\subsection{Sequence Models, Attention and Auxiliary Tasks}
+
+LSTM networks address the vanishing-gradient problem in recurrent learning \cite{hochreiter1997lstm}, and bidirectional recurrence encodes context from both directions of an observed sequence \cite{schuster1997brnn,lipton2015lstm}. Convolutional layers extract local patterns before recurrent aggregation \cite{lecun1998cnn}, and Bai \emph{et al.} show that convolutional architectures are competitive with recurrent ones across sequence benchmarks \cite{bai2018tcn}; together these motivate our Model 2. The Transformer replaced recurrence with attention \cite{vaswani2017attention}. We apply attention along an unusual axis: not over the ten time steps, but across the drivers present at a common race lap.
+
+Multi-task learning shares a representation across related targets and can act as an inductive bias, though it can also hurt when tasks conflict or data is scarce \cite{caruana1997multitask}. Our Model 3 carries four heads: pit occurrence, the compound fitted at the next stop, next-lap pace relative to the stint, and final race outcome.
+
+\subsection{Imbalanced Classification}
+
+Pit events occupy a small minority of driver-lap windows, so a majority-class predictor achieves high accuracy while detecting nothing. The literature recommends precision--recall analysis over ROC under strong imbalance \cite{saito2015pr,davis2006prroc,he2009imbalanced}, and offers remedies including synthetic over-sampling and rare-event corrections \cite{chawla2002smote,kingzeng2001rare}. We instead weight the positive class inside the loss, which keeps training and validation losses on one comparable scale. Gradient boosting \cite{friedman2001gbm} and the scikit-learn implementations of our metrics and preprocessing \cite{pedregosa2011sklearn} serve as reference points throughout.
+
+The gap we address is a season-held-out, implementation-level comparison of per-driver sequence models against a cross-driver attention architecture on the same real telemetry, reported at both the window level and the event level.
+
+\section{Problem Formulation}
+
+Let $r$ index a race, $d$ a driver and $t$ the final lap of an observed window. A sample is
+
+\begin{equation}
+X_{r,d,t} \in \mathbb{R}^{L\times F}, \qquad L=10,\quad F=55,
+\label{eq:input}
+\end{equation}
+
+where each of the $L$ rows holds lap-level timing, tyre, position, track-status, weather, telemetry and field-relative features. Writing $q_{r,d,t}\in\{0,1\}$ for a pit-in lap, the target is
+
+\begin{equation}
+y_{r,d,t}=\mathbb{1}\!\left[\sum_{k=1}^{H}q_{r,d,t+k}>0\right], \qquad H=3,
+\label{eq:label}
+\end{equation}
+
+and each model estimates $p_{r,d,t}=P(y_{r,d,t}=1\mid X_{r,d,t})$, which a threshold converts into an alert.
+
+The three-lap horizon is a deliberate choice. With $H=1$ the positive rate falls to roughly 5\%, at which point a model that never predicts a stop scores about 95\% accuracy; $H=3$ raises it to 8.9\% while still matching the window in which a real strategy call is made. The summation in~\eqref{eq:label} starts at $k=1$, so lap $t$'s own stop can never enter lap $t$'s label.
+
+\section{System and Methodology}
+
+\subsection{Data Acquisition}
+
+We collect every race session of the 2021--2024 seasons through FastF1 \cite{fastf1docs}, which wraps the official live-timing feed, session telemetry and the results archive. Ninety races were downloaded. The interface permits 500 API calls per hour and a race costs roughly nine, so the sweep is paced and resumes from a local cache.
+
+Car telemetry arrives at approximately 3.7\,Hz, which across ninety races and twenty drivers is tens of gigabytes. Rather than store it, we reduce each lap's trace to eight summary channels at download time by binning samples into laps using lap-start boundaries, a vectorised operation costing about 0.25\,s per race. Weather is aligned to each lap by a backward as-of join, and finishing position, points and classification are joined per driver.
+
+\subsection{Cleaning and Feature Engineering}
+
+Laps without a recorded time are dropped, as are driver-races shorter than $L+H=13$ laps. This removes the 2021 Belgian Grand Prix in full: it was abandoned after three laps behind the safety car, so no driver reaches the required length. Eighty-nine races and 96{,}471 driver-laps survive.
+
+Fifty-five features are computed per driver-lap in six groups: timing and pace, including a rolling least-squares slope of lap time against tyre age within the current stint; tyre and stint state; race position; track status flags parsed from FastF1's concatenated codes; weather; aggregated telemetry; and cross-driver context giving gap to leader, intervals to the cars ahead and behind, the number of rivals pitting on that lap, the field's mean tyre age and this driver's tyre age relative to it. That last group is the hand-engineered counterpart to the attention mechanism tested in Model 3.
+
+\subsection{Windowing, Splitting and Scaling}
+
+Sliding windows of $L=10$ laps are formed per driver-race and never cross a driver or race boundary, giving 81{,}270 labelled sequences. Splits are by season rather than by row: windows from the same race overlap in nine of their ten laps, so a random split would place near-duplicates on both sides and inflate every score. Guidance on validating autoregressive time series recommends precisely this preservation of temporal order \cite{bergmeir2018timeseries}. We train on 2021--2022, validate on 2023 and test on 2024, and verify that no race identifier appears in more than one split. The feature scaler is fitted on the training split alone.
+
+\begin{table}[t]
+\centering
+\caption{Dataset after cleaning and windowing.}
+\label{tab:data}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Split & Seasons & Races & Windows & Positive \\
+\midrule
+Train      & 2021--22 & 43 & 38{,}890 & 9.15\% \\
+Validation & 2023     & 22 & 20{,}152 & 9.55\% \\
+Test       & 2024     & 24 & 22{,}228 & 8.52\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Architectures}
+
+All three models consume the same tensors and emit a pit probability, so any difference in score is attributable to architecture rather than to data preparation.
+
+\textbf{Model 1, Bi-LSTM.} A stacked bidirectional LSTM, 64 units then 32, with dropout 0.4 and light $L_2$, followed by a dense layer and a sigmoid. The window is closed and historical at prediction time, so reading it in both directions is legitimate.
+
+\textbf{Model 2, CNN--BiLSTM.} Two \texttt{Conv1D} layers with batch normalisation feed a bidirectional LSTM of 16 units. The convolutions slide along the lap axis and detect short local motifs, leaving the recurrent layer to model how those evolve. We use no pooling: at $L=10$ even a stride-two pool discards half the temporal resolution the recurrent layer exists to read.
+
+\textbf{Model 3, multi-task with cross-driver attention.} Samples are regrouped into $(\text{race},\text{lap})$ grids of up to twenty drivers, holding exactly the same feature rows reindexed. A shared encoder runs the same bidirectional LSTM over each driver's window, after which multi-head attention operates across the driver axis with a residual connection and layer normalisation, followed by a position-wise feed-forward block. Four heads share the result. Padded driver slots are masked out of both the attention and every loss term, since most grids are incomplete through retirements and the ten-lap warm-up each driver needs.
+
+\subsection{Objective and Thresholding}
+
+Models 1 and 2 minimise weighted binary cross-entropy,
+
+\begin{equation}
+\mathcal{L}_{\mathrm{pit}}=-\frac{1}{N}\sum_{i=1}^{N}w_i
+\left[y_i\log p_i+(1-y_i)\log(1-p_i)\right],
+\end{equation}
+
+with $w_i$ scaling positives by the negative-to-positive ratio, approximately 9.9. We apply the weight inside the loss rather than through a class-weight argument, because the latter is not applied to validation data and would leave the training and validation loss curves on different scales.
+
+Model 3 minimises a weighted sum across its heads,
+
+\begin{equation}
+\mathcal{L}=1.0\,\mathcal{L}_{\mathrm{pit}}
++0.2\,\mathcal{L}_{\mathrm{compound}}
++0.3\,\mathcal{L}_{\mathrm{pace}}
++0.2\,\mathcal{L}_{\mathrm{outcome}},
+\end{equation}
+
+with the pit head dominant because it is the head under comparison. The compound head is supervised only where a stop actually follows and the next compound is known, which is 8.6\% of rows; the pace head uses a Huber loss, since the safety-car tail would otherwise dominate a squared error.
+
+Training uses Adam, a seed of 42, a cap of 60 epochs, and early stopping on validation PR-AUC rather than validation loss: under this imbalance the loss can improve while the model becomes worse at the task. The decision threshold is then chosen on the 2023 validation split to maximise F1, subject to a guard requiring precision to exceed the base rate, and held fixed for 2024. Without that guard, a model with no signal maximises F1 by alerting on every lap.
+
+\begin{algorithm}[t]
+\caption{Pipeline}
+\label{alg:workflow}
+\begin{algorithmic}[1]
+\STATE Download and cache each race session; reduce telemetry to lap level.
+\STATE Join laps, weather and results into one driver-lap table per race.
+\STATE Clean laps; compute 55 features and the three-lap label.
+\STATE Form ten-lap windows per driver-race; split by season.
+\STATE Fit the scaler on training windows only.
+\FOR{each architecture}
+  \STATE Train with weighted loss, early stopping on validation PR-AUC.
+  \STATE Select the threshold on validation; freeze it.
+  \STATE Score 2024; write metrics, curves and confusion matrix.
+\ENDFOR
+\STATE Group consecutive alerts; compute event-level stop anticipation.
+\end{algorithmic}
+\end{algorithm}
+
+\section{Results}
+
+\subsection{Window-level Comparison}
+
+Table~\ref{tab:neural} reports the 2024 season at each model's own validation-selected threshold. The never-pit baseline is included because it is the number that makes the others interpretable: it attains the highest accuracy in the table while detecting no stops at all, which is why we treat PR-AUC rather than accuracy as the headline metric.
+
+\begin{table*}[t]
+\centering
+\caption{Held-out 2024 season. Thresholds were selected on the 2023 validation split and held fixed.}
+\label{tab:neural}
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+Model & Params & Threshold & Acc. & Bal.\ Acc. & Prec. & Recall & F1 & ROC-AUC & PR-AUC \\
+\midrule
+Never-pit baseline            & ---      & 0.500 & \textbf{0.9148} & 0.5000 & 0.000 & 0.000 & 0.000 & 0.500 & 0.085 \\
+Model 1: Bi-LSTM              & 104{,}769 & 0.772 & 0.8559 & 0.6725 & \textbf{0.283} & 0.451 & \textbf{0.348} & \textbf{0.802} & \textbf{0.322} \\
+Model 2: CNN--BiLSTM          & 8{,}881   & 0.752 & 0.8067 & \textbf{0.6961} & 0.235 & \textbf{0.563} & 0.332 & 0.779 & 0.289 \\
+Model 3: MTL + attention      & 48{,}394  & 0.688 & 0.8115 & 0.6784 & 0.230 & 0.518 & 0.319 & 0.754 & 0.265 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Model 1 leads on both areas under the curve and on F1. Model 2 reaches within 0.033 PR-AUC of it using one twelfth of the parameters, and attains the best balanced accuracy and recall. Model 3 is last on every threshold-independent measure. Measured per driver-lap, inference costs 0.043\,ms, 0.029\,ms and 0.019\,ms respectively; Model 3 is fastest because it scores an entire grid in one pass.
+
+\subsection{Classical Baselines}
+\label{sec:baselines}
+
+To test whether the sequence models earn their complexity we train two classical models on exactly the same tensors. Logistic regression on the final lap of each window reaches 0.796 ROC-AUC and 0.321 PR-AUC. Gradient boosting on the flattened window reaches 0.832 and 0.374. The gradient-boosted model therefore outperforms all three networks on this dataset, and logistic regression on a single lap is level with our best network. We report this rather than omit it: on 81{,}270 heavily overlapping windows drawn from 89 races, the deep architectures are not yet justified by their results.
+
+\subsection{Event-level Race Replay}
+
+Per-lap metrics answer how often a model is right about a lap. A strategist asks a different question: of the stops that happened, how many did we see coming, and how early? We therefore re-score the 2024 season per stop. A stop counts as anticipated if the model crossed its threshold on at least one of the three laps before it, and consecutive crossings before one stop count as a single alert rather than three.
+
+\begin{table}[t]
+\centering
+\caption{Event replay over the 644 real stops of the 2024 season.}
+\label{tab:replay}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrr}
+\toprule
+Model & Stops anticipated & Median lead & \shortstack{False alarms\\per driver-race} \\
+\midrule
+Model 1: Bi-LSTM         & 50.8\% (327) & 3 laps & \textbf{0.14} \\
+Model 2: CNN--BiLSTM     & \textbf{62.9\%} (405) & 3 laps & 0.28 \\
+Model 3: MTL + attention & 57.0\% (367) & 3 laps & 0.26 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The ordering differs from Table~\ref{tab:neural}. Model 1 leads on PR-AUC yet anticipates the fewest stops, because its higher threshold makes it the most conservative, which also earns it the lowest false-alarm rate. Model 2 anticipates 78 more stops across the season at the cost of roughly one extra false alarm every seven driver-races. The two views measure different things and we report both: the per-lap metrics describe how well a model ranks laps, while the replay describes what happens at the operating point actually used. This answers RQ3 in the negative, and the disagreement is not an artefact: a stop spans three positive laps, so catching one of them anticipates the stop while still missing two laps of recall.
+
+\subsection{Cross-driver Attention Ablation}
+
+To isolate the contribution of the attention mechanism we run a factorial ablation, crossing attention on and off with multi-task supervision on and off. Disabling attention removes that sub-block and nothing else: the encoder, feed-forward block, normalisations and all four heads are untouched, so each driver is then encoded in isolation. Selection is on validation PR-AUC, as everywhere else.
+
+\begin{table}[t]
+\centering
+\caption{Model 3 ablation, test PR-AUC.}
+\label{tab:ablation}
+\small
+\begin{tabular}{llrr}
+\toprule
+Attention & Multi-task & Validation & Test \\
+\midrule
+Yes & Yes & ABL\_A\_VAL & ABL\_A\_TEST \\
+Yes & No  & ABL\_B\_VAL & ABL\_B\_TEST \\
+No  & Yes & ABL\_C\_VAL & ABL\_C\_TEST \\
+No  & No  & ABL\_D\_VAL & ABL\_D\_TEST \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The result does not support our hypothesis. Attention costs performance in both conditions, with and without the auxiliary heads, and the strongest configuration in the grid is the one with attention switched off. Multi-task supervision is close to neutral. We offer two candidate explanations, both testable. First, the grid layout changes the optimisation regime as well as the architecture: regrouping by race and lap turns 38{,}890 training windows into 2{,}181 training grids, so the same driver-laps yield far fewer gradient updates per epoch at the moment attention adds parameters. Second, the cross-driver context is already present in the fifty-five inputs, so attention may be relearning, from far fewer examples, what those features state directly. We retained the full architecture as Model 3 rather than reporting the attention-free variant under that name, since disabling attention changes what the model is.
+
+\subsection{Auxiliary Heads}
+
+Model 3 is the only architecture here that emits more than one prediction, so we evaluate its three auxiliary heads against baselines that make each number interpretable. The outcome head classifies the final race result as podium, points or no points and reaches 75.2\% accuracy with a macro-F1 of 0.721, against a 45.4\% majority baseline. The compound head reaches 56.6\% accuracy against a 56.3\% majority baseline, so it is effectively at chance. The pace head attains a mean absolute error of 2.35\,s against 1.81\,s for simply predicting the stint median, so it is worse than the trivial predictor. Two of the four heads are therefore useful and two are not, which we state plainly rather than reporting only the head that worked.
+
+\section{Threats to Validity}
+\label{sec:validity}
+
+\subsection{A Look-ahead Leak We Found and Fixed}
+
+An earlier version of our feature code computed \texttt{lap\_time\_delta\_stint} by subtracting a median taken over the \emph{complete} stint. Because features are computed before windows are sliced, a window ending at lap $t$ carried a statistic influenced by laps the driver had not yet run, including the slow degraded laps immediately preceding a stop. That made a pre-pit lap appear unusually quick relative to its own stint. The leaked and causal forms agree on only 8.5\% of rows and differ by 2.74\,s on average, and the feature's correlation with the label changes sign between them, from $+0.036$ causal to $-0.072$ leaked.
+
+We replaced it with an expanding median using only laps up to and including $t$, and added a general test: features are computed over a full race, recomputed over only the laps up to some lap $t$, and every feature at lap $t$ must be identical. Any feature that reads the future fails and is named. The test fails on the original code and passes on the correction.
+
+All results in this paper come from the corrected pipeline. For transparency we note the effect of the fix: PR-AUC moved from 0.323 to 0.322 for Model 1, 0.306 to 0.289 for Model 2, and was unchanged at 0.265 for Model 3, while event-level anticipation improved for all three because the retuned thresholds sit lower. The ordering is unchanged, so our conclusions survive the correction. We report the leak because the correction was material to validity even though its numerical effect was modest.
+
+\subsection{Run-to-run Variance}
+
+Each configuration is trained with a single seed. Repeating the Model 3 contenders across three seeds, we observe a seed-to-seed swing in test PR-AUC that is comparable to the gap between architectures. Differences of a few thousandths in Table~\ref{tab:neural} should therefore not be read as meaningful, and a stronger evaluation would report race-level bootstrap intervals and multi-seed means.
+
+\subsection{Data and Evaluation Scope}
+
+The test set is a single season. Windows overlap heavily in nine of ten laps, so 81{,}270 samples represent far fewer independent observations, drawn from 815 driver-races. FastF1 exposes telemetry from 2018 onward, so roughly sixty further races were available and not used; given that our architecture sweeps all land in a narrow band, dataset size rather than model capacity appears to be the binding constraint. The 2022 regulation change means training spans two car generations, although we find that training on 2021 and 2022 together outperforms either season alone.
+
+\subsection{Scope of Claims}
+
+The pipeline consumes completed race sessions. Low offline inference latency does not establish real-time operation: live acquisition, streaming reliability, calibration drift and integration with a strategy process would each need separate validation. Nor is a pit probability an optimal strategy. The model estimates whether a stop occurs in a future window, not whether stopping is the fastest action available. Finally, the cause of a stop is not modelled, so a planned stop, a puncture and a safety-car opportunity are indistinguishable to the classifier.
+
+\section{Conclusion and Future Work}
+
+We built and evaluated a supervised pipeline that predicts Formula One pit stops from real telemetry, and compared three architectures on a held-out season under one identical protocol. The bidirectional LSTM gives the best window-level scores, the convolutional model anticipates the most real stops in the event replay while using one twelfth of the parameters, and the multi-task model with cross-driver attention is last on the per-lap metrics while being the only architecture that produces additional strategic predictions. Its outcome head reaches 75.2\% accuracy against a 45.4\% baseline, though two of its four heads are not useful. Our own hypothesis, that attention across drivers would improve pit prediction, is not supported by a controlled ablation, and a gradient-boosting baseline on the same tensors remains ahead of all three networks.
+
+Future work follows directly from the limitations above. Extending the dataset to the 2018--2020 seasons would test whether sample size is genuinely the binding constraint. Attention over the lap axis remains untested, the cross-driver axis having been ruled out here. Reporting multi-seed means with race-level confidence intervals would make small differences interpretable. The three auxiliary heads deserve evaluation as targets in their own right rather than as regularisers. Finally, an operating point chosen by the asymmetric cost of a missed stop against a false alarm would be more useful to a strategist than one that maximises F1 \cite{he2009imbalanced}.
+
+\section*{Code and Data Availability}
+
+The pipeline, per-model metrics, figures and the test suite described above are available in the project repository \cite{f1vre2026repo}. Raw telemetry and trained weights are regenerable from the committed code: the acquisition script rebuilds the dataset from the public timing feed, subject to the hourly request limit noted in Section~IV.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
