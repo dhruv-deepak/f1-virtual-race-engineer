@@ -92,6 +92,6 @@ spread = df.groupby("config")["test_pr_auc"].agg(lambda s: s.max() - s.min())
 print(f"\nwidest seed-to-seed test swing within one config: {spread.max():.4f}")
 print(f"gap between best and worst config mean          : "
       f"{agg['test_mean'].max() - agg['test_mean'].min():.4f}")
-print(f"\nModel 2 reference test PR-AUC: 0.3055")
+print("\nModel 2 reference test PR-AUC: 0.2892")
 print("Model 1 reference test PR-AUC: 0.3215")
 print(f"\nsaved {out}")
