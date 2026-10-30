@@ -242,15 +242,15 @@ To isolate the contribution of the attention mechanism we run a factorial ablati
 \toprule
 Attention & Multi-task & Validation & Test \\
 \midrule
-Yes & Yes & ABL\_A\_VAL & ABL\_A\_TEST \\
-Yes & No  & ABL\_B\_VAL & ABL\_B\_TEST \\
-No  & Yes & ABL\_C\_VAL & ABL\_C\_TEST \\
-No  & No  & ABL\_D\_VAL & ABL\_D\_TEST \\
+Yes & Yes & 0.2859 & 0.2650 \\
+Yes & No  & 0.2976 & 0.2740 \\
+No  & Yes & \textbf{0.3107} & \textbf{0.3120} \\
+No  & No  & 0.3080 & 0.3070 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The result does not support our hypothesis. Attention costs performance in both conditions, with and without the auxiliary heads, and the strongest configuration in the grid is the one with attention switched off. Multi-task supervision is close to neutral. We offer two candidate explanations, both testable. First, the grid layout changes the optimisation regime as well as the architecture: regrouping by race and lap turns 38{,}890 training windows into 2{,}181 training grids, so the same driver-laps yield far fewer gradient updates per epoch at the moment attention adds parameters. Second, the cross-driver context is already present in the fifty-five inputs, so attention may be relearning, from far fewer examples, what those features state directly. We retained the full architecture as Model 3 rather than reporting the attention-free variant under that name, since disabling attention changes what the model is.
+The result does not support our hypothesis. Attention costs 0.047 test PR-AUC alongside the auxiliary heads and 0.033 with the pit head alone, so it hurts in both conditions, and the strongest configuration in the grid is the one with attention switched off. Multi-task supervision moves the score by less than 0.01 either way. Multi-task supervision is close to neutral. We offer two candidate explanations, both testable. First, the grid layout changes the optimisation regime as well as the architecture: regrouping by race and lap turns 38{,}890 training windows into 2{,}181 training grids, so the same driver-laps yield far fewer gradient updates per epoch at the moment attention adds parameters. Second, the cross-driver context is already present in the fifty-five inputs, so attention may be relearning, from far fewer examples, what those features state directly. We retained the full architecture as Model 3 rather than reporting the attention-free variant under that name, since disabling attention changes what the model is.
 
 \subsection{Auxiliary Heads}
 
