@@ -442,14 +442,25 @@ for idx, rows in zip((7, 8, 9), (LIT, LIT2, LIT3)):
 # ---- 11 software and hardware ---------------------------------------------
 fill_table(table_of(S[10]), [
     ["SOFTWARE", "HARDWARE"],
-    ["Python 3.12", "Intel / AMD x64 CPU — all training ran on CPU"],
-    ["TensorFlow 2.20 and Keras 3.12 (deep learning)", "16 GB system RAM"],
-    ["FastF1 3.8 (official F1 telemetry access)", "~12 GB free disk for the telemetry cache"],
-    ["NumPy, pandas, PyArrow (data handling)", "NVIDIA RTX 3050 present but unused: the pinned"],
-    ["scikit-learn (metrics, classical baselines)", "TensorFlow build is not CUDA-enabled, and"],
-    ["Matplotlib and seaborn (figures)", "native Windows has shipped no GPU support since 2.10"],
-    ["Jupyter, pytest, Git and GitHub", "Training a model takes under 65 seconds regardless"],
-], sizes=(13, 11))
+    ["Operating system — Windows 11 (build 10.0.26300)",
+     "Processor — Intel Core i7-12650H, 10 cores / 16 threads"],
+    ["Language — Python 3.12.10",
+     "Memory — 16 GB system RAM (15.7 GB usable)"],
+    ["Deep learning — TensorFlow 2.20.0, Keras 3.12.0",
+     "Storage — SSD, ~10 GB used by the telemetry cache"],
+    ["Data source — FastF1 3.8.3 (official F1 timing feed)",
+     "Graphics — NVIDIA RTX 3050 Laptop, present but unused"],
+    ["Data handling — NumPy 2.3.3, pandas 2.3.3, PyArrow 25.0.1",
+     "Network — broadband, for the FastF1 download sweep"],
+    ["Classical ML and metrics — scikit-learn 1.7.2",
+     "Compute mode — CPU only; no CUDA-enabled build available"],
+    ["Visualisation — Matplotlib 3.10.6, seaborn 0.13.2, Pillow 11.3.0",
+     "Training cost — under 65 seconds per model"],
+    ["Notebooks, testing, reporting — JupyterLab 4.4.7, pytest 9.1.1, python-pptx 1.0.2",
+     "Inference cost — 0.027 to 0.061 ms per driver-lap"],
+    ["Version control — Git and GitHub",
+     "Minimum viable spec — any x64 CPU, 8 GB RAM, 15 GB disk"],
+], sizes=(12, 10))
 
 # ---- 12 proposed solution --------------------------------------------------
 set_bullets(S[11], [
@@ -742,6 +753,87 @@ set_bullets(prs.slides[ref_idx], REFS[:9], size=12, spacing=7)
 s = add_slide(prs, ref_idx)
 set_title(s, "REFERENCES (contd.)")
 set_bullets(s, REFS[9:], size=12, spacing=7)
+
+# ---- requirements detail ---------------------------------------------------
+# Inserted last so the fixed slide indices used above stay valid. Every version
+# below is the one actually installed in the environment the project was built
+# and trained in, not a generic recommendation.
+req_idx = next(i for i, sl in enumerate(prs.slides)
+               if sl.shapes.title is not None
+               and sl.shapes.title.text.strip().startswith("Software and Hardware"))
+
+s = add_slide(prs, req_idx)
+set_title(s, "SOFTWARE REQUIREMENTS — Detail")
+ph = body_ph(s)
+left, width = ph.left, ph.width
+ph._element.getparent().remove(ph._element)
+# python-pptx grows a table to fit its text, so this starts high and uses a
+# small body size: 16 rows is close to the most the slide can carry.
+gf = s.shapes.add_table(16, 4, left, Emu(1420000), width, Emu(4700000))
+fill_table(gf.table, [
+    ["Category", "Component", "Version", "Role in this project"],
+    ["Platform", "Windows 11", "10.0.26300", "Development and training environment"],
+    ["Platform", "Python", "3.12.10", "All data, model and evaluation code"],
+    ["Deep learning", "TensorFlow", "2.20.0", "Backend executing all three models"],
+    ["Deep learning", "Keras", "3.12.0", "Layer definitions, training loop, callbacks, custom loss"],
+    ["Data source", "FastF1", "3.8.3", "Official F1 timing, telemetry, weather and results"],
+    ["Data handling", "NumPy", "2.3.3", "Sequence windowing, masking, grid gathering"],
+    ["Data handling", "pandas", "2.3.3", "Driver-lap tables and all feature engineering"],
+    ["Data handling", "PyArrow", "25.0.1", "Parquet I/O for the 90 per-race tables"],
+    ["Machine learning", "scikit-learn", "1.7.2", "Metrics, train-only scaler, logistic and gradient-boosting baselines"],
+    ["Visualisation", "Matplotlib", "3.10.6", "Every figure in the report and both decks"],
+    ["Visualisation", "seaborn / Pillow", "0.13.2 / 11.3.0", "Figure styling and the animated race replay"],
+    ["Notebooks", "JupyterLab / nbconvert", "4.4.7 / 7.16.6", "Four executed review notebooks"],
+    ["Testing", "pytest", "9.1.1", "20 regression tests over the loss, registry and masking"],
+    ["Reporting", "python-pptx / tabulate", "1.0.2 / 0.10.0", "Automated deck generation and Markdown tables"],
+    ["Version control", "Git and GitHub", "2.50", "Phase-by-phase history, one commit per milestone"],
+], sizes=(9.5, 8), col_w=[1.5, 2.3, 1.8, 5.6])
+
+s = add_slide(prs, req_idx + 1)
+set_title(s, "HARDWARE REQUIREMENTS — Detail")
+ph = body_ph(s)
+left, width = ph.left, ph.width
+ph._element.getparent().remove(ph._element)
+gf = s.shapes.add_table(9, 4, left, Emu(1550000), width, Emu(2750000))
+fill_table(gf.table, [
+    ["Component", "Specification used", "Minimum viable", "Why the project needs it"],
+    ["Processor", "Intel Core i7-12650H, 10 cores / 16 threads, 2.3 GHz",
+     "Any modern x64 CPU", "All training and inference; the recurrent layers are CPU-bound"],
+    ["Memory", "16 GB (15.7 GB usable)", "8 GB",
+     "The 81,270 × 10 × 55 float32 tensor plus the (race, lap) grids are held in memory"],
+    ["Storage", "SSD, ~10 GB used", "15 GB free",
+     "9.8 GB FastF1 telemetry cache, 26 MB processed dataset, figures and checkpoints"],
+    ["Graphics", "NVIDIA RTX 3050 Laptop (unused)", "None required",
+     "No CUDA-enabled TensorFlow build; native Windows has shipped no GPU support since 2.10"],
+    ["Network", "Broadband connection", "Any stable connection",
+     "The FastF1 sweep is rate-limited to 500 API calls per hour, about nine per race"],
+    ["Training cost", "28–62 s per model, 11–14 epochs", "—",
+     "Early stopping on validation PR-AUC halts every model within a few epochs"],
+    ["Inference cost", "0.027–0.061 ms per driver-lap", "—",
+     "Comfortably inside real-time: a 20-car field is scored in well under a millisecond"],
+    ["Dataset build", "~50 min download, ~2 min feature build", "—",
+     "One-off cost; the cache makes every later run immediate"],
+], sizes=(10, 8.5), col_w=[1.5, 3.0, 1.6, 5.1])
+
+box = s.shapes.add_textbox(left, Emu(4600000), width, Emu(1700000))
+tf = box.text_frame
+tf.word_wrap = True
+tf.paragraphs[0].text = "A note on the GPU"
+for r in tf.paragraphs[0].runs:
+    r.font.size, r.font.bold, r.font.color.rgb = Pt(14), True, ACCENT
+for line in [
+    "The development machine has an NVIDIA RTX 3050, but it was never used. The pinned "
+    "TensorFlow build reports no CUDA support, and TensorFlow has shipped no native Windows GPU "
+    "support since version 2.10, so every run in this project executed on CPU.",
+    "This turns out not to matter: the largest model trains in 62 seconds and scores a lap in "
+    "0.06 ms. The constraint on this project is the quantity of data, not compute — which is "
+    "also what the architecture sweeps concluded.",
+]:
+    p = tf.add_paragraph()
+    p.text = line
+    p.space_after = Pt(7)
+    for r in p.runs:
+        r.font.size, r.font.name, r.font.color.rgb = Pt(12), BODY_FONT, BODY
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 prs.save(str(OUT))
