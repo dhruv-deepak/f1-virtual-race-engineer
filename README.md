@@ -96,7 +96,11 @@ f1-virtual-race-engineer/
 │   ├── models/             # the three architectures
 │   ├── evaluation/         # metrics, curves, confusion matrices
 │   └── utils/
-├── notebooks/              # review presentations (import from src/)
+├── notebooks/              # review presentations (import from src/, no logic of their own)
+│   ├── 01_review2_bilstm.ipynb                 Model 1 end to end
+│   ├── 02_review3_model2_cnn_bilstm.ipynb      Model 2
+│   ├── 03_review3_model3_attention.ipynb       Model 3 + the attention ablation
+│   └── 04_review3_comparison_and_replay.ipynb  three-model comparison + race replay
 ├── data/                   # raw + processed data (gitignored, regenerable)
 ├── models/                 # trained weights (gitignored)
 ├── reports/
@@ -110,6 +114,24 @@ import identical preprocessing code. Notebooks import from `src/` and exist to
 present results, not to hold logic.
 
 ---
+
+## Notebooks
+
+Four executed notebooks walk through the work with live outputs and every figure embedded. They
+import from `src/` rather than redefining anything, so they cannot drift from the committed
+pipeline.
+
+| Notebook | Covers |
+|---|---|
+| `01_review2_bilstm.ipynb` | Model 1 end to end — the Review 2 presentation |
+| `02_review3_model2_cnn_bilstm.ipynb` | Model 2, and the sweep that selected its widths |
+| `03_review3_model3_attention.ipynb` | Model 3, its masking tests, and the attention ablation |
+| `04_review3_comparison_and_replay.ipynb` | All three compared, classical baselines, race replay |
+
+Notebooks 02–04 default to `RETRAIN = False`: they load the weights and predictions the committed
+training runs saved, so their numbers match the report exactly. Set `RETRAIN = True` in a notebook
+to train a fresh copy live — it fits the model inside the notebook and does not overwrite the
+published artefacts.
 
 ## Setup
 
