@@ -79,6 +79,25 @@ print("\nranked by validation PR-AUC (the selection metric):")
 for tag, v, ep, p, te_pr, te_roc in sorted(rows, key=lambda r: -r[1]):
     print(f"  val {v:.4f}  test PR {te_pr:.4f}  {tag}")
 
+# Write the results file the deck and the report read from. This script used to
+# only print, so mtl_ablation.csv had to be reconstructed by hand from the log
+# and went stale the moment the experiment was re-run.
+import pandas as pd  # noqa: E402
+
+out = config.METRICS_DIR / "mtl_ablation.csv"
+pd.DataFrame([{
+    "config": tag.split()[0],
+    "description": tag.split(maxsplit=1)[1].strip(),
+    "attention": "no attn" not in tag,
+    "multi_task": "pit only" not in tag,
+    "params": params,
+    "best_epoch": ep,
+    "val_pr_auc": round(float(v), 4),
+    "test_pr_auc": round(float(te_pr), 4),
+    "test_roc_auc": round(float(te_roc), 4),
+} for tag, v, ep, params, te_pr, te_roc in rows]).to_csv(out, index=False)
+print(f"\nsaved {out}")
+
 d = {r[0][0]: r for r in rows}
 print("\nablation readout (test PR-AUC):")
 print(f"  attention effect, multi-task : A {d['A'][4]:.4f}  vs  C {d['C'][4]:.4f}"
